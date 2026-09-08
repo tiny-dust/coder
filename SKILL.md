@@ -20,19 +20,19 @@ description: 一切开发任务的总入口——只要任务涉及编写、修�
 
 ## 首次使用引导（每个项目一次）
 
-第一次在某个项目中使用本技能、且项目根目录没有 `.coder/profile.json` 时：
+第一次在某个项目中使用本技能、且项目根目录没有 `.coder/` 目录时，**先不要开发**，用 AskUserQuestion 询问用户选择本次的建库范围（三选一）：
 
-1. 用 AskUserQuestion 询问用户：**是否安装本项目的最佳开发范式？**（选项：安装 / 跳过）
-2. 用户允许后，运行深度调查并生成范式档案：
+1. **全量扫库**：运行 `--init`（栈检测生成 profile.json）+ `--refresh`（全量索引）。耗时较长但之后所有任务的查询都最快最准，适合打算长期在此项目开发时。
+2. **只建当前需求相关记录**：运行 `--refresh` 建立全量索引（索引只是路径/导出/接口摘要，建库成本低），但**不跑 --init 栈检测**；本次任务只围绕需求相关文件深入阅读。适合"只是做个小改动，不想为全项目建档案"时。之后需要范式档案可随时补跑 `--init`。
+3. **本次不创建，直接运行**：跳过建库，本次任务不使用索引查询（改为小范围直接阅读相关源码），之后不再询问；想启用时手动运行 `--init` / `--refresh` 即可。
 
-```bash
-node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --init
-```
+用户选择后：
 
-脚本自动检测框架与版本（Vue/React/Svelte）、构建器（Vite 等）、路由（vue-router）、UI 库（Element Plus/shadcn-vue 等）、状态库（Pinia 等）、TypeScript 与语言版本、文件类型分布和工具链（oxlint/oxfmt/vitest），写入 `.coder/profile.json`。
+- 选 1 → 依次执行 `node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --init` 和 `--refresh`，然后依据 profile.json 结合 references 确定该项目开发范式，向用户简述确认后进入开发。
+- 选 2 → 只执行 `--refresh`，按 references 的通用规则 + 本次需求相关文件开发。
+- 选 3 → 本次跳过查询步骤，直接小范围阅读相关源码开发；本技能不再询问。
 
-3. **依据 profile.json 结合 references 确定该项目的开发范式**：框架版本对应的 SFC/组合式 API 写法、文件类型对应的规则集（`.vue` → SFC 结构；`.ts` → 类型优先）、UI 库封装约定。向用户简述确认后的范式，然后才进入开发。
-4. 用户跳过时：不做栈检测，按 references 的通用 Vue/TS 规则开发，之后不再重复询问。
+无论选哪项，后续任务不再重复引导（以 `.coder/` 目录是否存在 + meta.json 为准）。
 
 ## 文件后缀路由
 
@@ -62,6 +62,8 @@ node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --refresh
 **索引容量与 SQLite 模式**：索引条目 ≤300 时使用单个 JSON 文件；超过 300 条时自动切换为 SQLite（`.coder/index.sqlite`，逐行读取，避免大 JSON 加载慢）。也可用 `--db` 强制启用、`--no-db` 强制禁用。SQLite 模式需要 Node ≥ 22.5（内置 `node:sqlite`；本机可用 `/Users/reynold/.vite-plus/bin/node`）。两种模式输出格式完全一致，查询时无需关心后端。
 
 查询结果未命中时，才针对相关目录做小范围源码检查。禁止因为未命中就全量读取项目。
+
+**索引不存在时**（用户在引导中选了"本次不创建"或引导被跳过）：不要自动建库，本次任务直接小范围阅读相关源码。
 
 ## 开发工作流
 
