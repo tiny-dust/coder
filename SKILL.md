@@ -1,13 +1,29 @@
 ---
 name: coder
-description: Vue 3 与 TypeScript 开发总调度。适用于创建、修改、审查和调试 .vue 或 .ts 文件。根据编辑文件后缀自动应用对应规则：.vue 使用 Vue SFC 结构与组件复用规范；.ts 复用相同的先查后写、类型优先、最小改动流程。开发前优先运行 scripts/query.js 按名称查询已有组件和工具函数，避免全量读取项目文档和重复造轮子。复杂场景再分派到 vue3-project-init、vue3-dev 或 vue3-deps。
+description: Vue 3 与 TypeScript 开发总调度。适用于创建、修改、审查和调试 .vue 或 .ts 文件。铁律（每次任务必须遵守，优先级最高）：禁止过度设计与过度开发，永远用最简方式实现当前需求；发现逻辑 bug 时先完成当前开发，再与用户确认是否修复。首次在项目中使用时，先用 AskUserQuestion 询问用户是否安装最佳开发范式（--init 深度调查项目栈），允许后才执行。根据编辑文件后缀自动应用规则：.vue 使用 Vue SFC 结构规范；.ts 复用相同的先查后写、类型优先、最小改动流程。开发前优先运行 scripts/query.js 按名称查询已有组件和工具函数（索引超过 300 条自动启用 SQLite 模式），避免全量读取项目文档和重复造轮子。复杂场景再分派到 vue3-project-init、vue3-dev 或 vue3-deps。
 ---
 
 # Coder
 
-## 总原则
+## 铁律（优先级最高，每次任务必须遵守）
 
-**先识别后缀，先查询后写，最小实现，完成验证。** 不为需求外的功能建立抽象，不把项目源码或说明全量读入上下文。
+**禁止过度设计与过度开发。永远用最简洁的方式实现当前需求**：不做需求外的抽象、配置项、策略模式；不为"未来可能"写代码；能一行就不写三行；新逻辑优先加入已有文件而非新建。发现逻辑 bug 时，先完成当前开发任务，然后**与用户确认是否修复**，不擅自扩大改动范围。
+
+## 首次使用引导（每个项目一次）
+
+第一次在某个项目中使用本技能、且项目根目录没有 `.coder/profile.json` 时：
+
+1. 用 AskUserQuestion 询问用户：**是否安装本项目的最佳开发范式？**（选项：安装 / 跳过）
+2. 用户允许后，运行深度调查并生成范式档案：
+
+```bash
+node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --init
+```
+
+脚本自动检测框架与版本（Vue/React/Svelte）、构建器（Vite 等）、路由（vue-router）、UI 库（Element Plus/shadcn-vue 等）、状态库（Pinia 等）、TypeScript 与语言版本、文件类型分布和工具链（oxlint/oxfmt/vitest），写入 `.coder/profile.json`。
+
+3. **依据 profile.json 结合 references 确定该项目的开发范式**：框架版本对应的 SFC/组合式 API 写法、文件类型对应的规则集（`.vue` → SFC 结构；`.ts` → 类型优先）、UI 库封装约定。向用户简述确认后的范式，然后才进入开发。
+4. 用户跳过时：不做栈检测，按 references 的通用 Vue/TS 规则开发，之后不再重复询问。
 
 ## 文件后缀路由
 
@@ -32,7 +48,9 @@ node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --kind fun
 node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --refresh
 ```
 
-脚本首次运行或使用 `--refresh` 时建立项目 `.coder/index.json`；普通查询只读取索引，不读取 `.docs` 或全部源码。索引不包含源码正文和敏感配置，可提交也可加入项目 `.gitignore`。源码发生变化后，在下一次开发前用 `--refresh` 更新。
+脚本首次运行或使用 `--refresh` 时建立项目索引；普通查询只读取索引，不读取 `.docs` 或全部源码。索引不包含源码正文和敏感配置，可提交也可加入项目 `.gitignore`。源码发生变化后，在下一次开发前用 `--refresh` 更新。
+
+**索引容量与 SQLite 模式**：索引条目 ≤300 时使用单个 JSON 文件；超过 300 条时自动切换为 SQLite（`.coder/index.sqlite`，逐行读取，避免大 JSON 加载慢）。也可用 `--db` 强制启用、`--no-db` 强制禁用。SQLite 模式需要 Node ≥ 22.5（内置 `node:sqlite`；本机可用 `/Users/reynold/.vite-plus/bin/node`）。两种模式输出格式完全一致，查询时无需关心后端。
 
 查询结果未命中时，才针对相关目录做小范围源码检查。禁止因为未命中就全量读取项目。
 
@@ -60,7 +78,8 @@ node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --refresh
 
 ## 共享资源
 
-- `scripts/query.js`：增量索引与按名称查询组件/函数
+- `scripts/query.js`：栈检测（--init）、增量索引（JSON/SQLite 自动切换）与按名称查询
+- `.coder/profile.json`：项目栈档案（--init 生成，首次引导的依据）
 - `references/sfc-structure.md`：Vue SFC 结构规范
 - `references/error-handling.md`：错误处理规范
 - `references/doc-formats.md`：旧 `.docs` 结构的兼容参考，仅在维护已有项目文档时使用
