@@ -2,7 +2,7 @@
 
 [![skills.sh](https://skills.sh/b/tiny-dust/coder)](https://skills.sh/tiny-dust/coder)
 
-面向 Vue 3 与 TypeScript 项目的开发调度技能。它根据编辑文件的后缀自动匹配规则，并通过本地 Node.js 索引按需查询已有组件和工具函数，减少重复读取项目文档和无关源码。
+所有开发任务的第一入口技能：只要涉及编写、修改、审查、调试或重构代码（不限语言），都先加载 coder。Vue 3 与 TypeScript 场景内置完整规则（SFC 结构、类型优先、复用优先），通过本地 Node.js 索引按需查询已有组件和工具函数，减少重复读取项目文档和无关源码；其他语言复用同一套通用工作流。
 
 ## 安装
 
