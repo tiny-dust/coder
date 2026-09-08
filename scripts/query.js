@@ -13,16 +13,17 @@ const FUNCTION_DIRS = new Set(['utils', 'util', 'lib', 'libs', 'helpers', 'helpe
 const SQLITE_THRESHOLD_ENTRIES = 300; // at 300+ entries the index switches from JSON to SQLite
 
 function usage() {
-  console.log(`Usage: node query.js [options] <name>\n\nOptions:\n  --root <dir>       Project root (default: current directory)\n  --init             Detect stack (framework/version/language) and write .coder/profile.json\n  --refresh          Incrementally rebuild the local index\n  --json             Print machine-readable JSON\n  --kind <kind>      component, function, or all (default: all)\n  --db               Force SQLite index mode (auto when > ${SQLITE_THRESHOLD_ENTRIES} entries)\n  --no-db            Force JSON index mode\n  --help             Show this help`);
+  console.log(`Usage: node query.js [options] <name>\n\nOptions:\n  --root <dir>       Project root (default: current directory)\n  --init             Detect stack (framework/version/language) and write .coder/profile.json\n  --refresh          Incrementally rebuild the local index\n  --check            Verify file size limits (.vue ≤ 500, script ≤ 300, others ≤ 500 lines)\n  --json             Print machine-readable JSON\n  --kind <kind>      component, function, or all (default: all)\n  --db               Force SQLite index mode (auto when > ${SQLITE_THRESHOLD_ENTRIES} entries)\n  --no-db            Force JSON index mode\n  --help             Show this help`);
 }
 
 function parseArgs(argv) {
-  const opts = { root: process.cwd(), refresh: false, json: false, kind: 'all', name: '', init: false, db: null };
+  const opts = { root: process.cwd(), refresh: false, json: false, kind: 'all', name: '', init: false, check: false, db: null };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--help' || arg === '-h') opts.help = true;
     else if (arg === '--init') opts.init = true;
     else if (arg === '--refresh') opts.refresh = true;
+  else if (arg === '--check') opts.check = true;
     else if (arg === '--json') opts.json = true;
     else if (arg === '--db') opts.db = true;
     else if (arg === '--no-db') opts.db = false;
@@ -304,10 +305,46 @@ function runQuery(opts, root, index) {
   printResults(opts, root, { backend: index.backend || 'json', entries });
 }
 
+// ---------- Size limit check (--check) ----------
+
+const MAX_FILE_LINES = 500;
+const MAX_SCRIPT_LINES = 300;
+
+function runCheck(opts, root) {
+  const files = walk(root);
+  const violations = [];
+  for (const file of files) {
+    const text = fs.readFileSync(file, 'utf8');
+    const lines = text.split('\n').length;
+    const relative = path.relative(root, file);
+    if (path.extname(file) === '.vue') {
+      const script = text.match(/<script[^>]*>([\s\S]*?)<\/script>/);
+      const scriptLines = script ? script[1].split('\n').length : 0;
+      if (lines > MAX_FILE_LINES || scriptLines > MAX_SCRIPT_LINES) {
+        violations.push({ file: relative, total: lines, script: scriptLines });
+      }
+    } else if (lines > MAX_FILE_LINES) {
+      violations.push({ file: relative, total: lines, script: null });
+    }
+  }
+  if (opts.json) return console.log(JSON.stringify({ ok: violations.length === 0, limits: { maxFileLines: MAX_FILE_LINES, maxScriptLines: MAX_SCRIPT_LINES }, violations }, null, 2));
+  if (!violations.length) {
+    console.log(`OK: all files within limits (file ≤ ${MAX_FILE_LINES} lines, .vue script ≤ ${MAX_SCRIPT_LINES} lines).`);
+    return;
+  }
+  for (const v of violations) {
+    console.log(`OVER LIMIT: ${v.file} — total ${v.total}${v.script !== null ? `, script ${v.script}` : ''} lines`);
+  }
+  console.log(`\n${violations.length} file(s) exceed limits. Split before finishing: 1) extract subcomponents 2) extract pure functions to utils 3) composable last.`);
+  process.exitCode = 1;
+}
+
 function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help) return usage();
   const root = projectRoot(opts.root);
+
+  if (opts.check) return runCheck(opts, root);
 
   if (opts.init) {
     const profile = detectStack(root);
@@ -327,7 +364,7 @@ function main() {
     return;
   }
 
-  if (!opts.name && !opts.refresh) throw new Error('Provide a component/function name, or use --refresh');
+  if (!opts.name && !opts.refresh && !opts.check) throw new Error('Provide a component/function name, or use --refresh');
   if (opts.refresh) {
     const built = buildIndex(root, opts);
     return console.log(opts.json ? JSON.stringify(built, null, 2) : `Indexed ${built.count} files (${built.backend}) in ${built.dbPath || built.indexPath}`);

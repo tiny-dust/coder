@@ -67,12 +67,27 @@ node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --refresh
 
 1. 确认任务涉及的文件后缀和项目根目录。
 2. 查询相关组件、函数、依赖和组合式函数；记录可复用结果。
-3. 读取必要的 references 和目标文件，明确现有接口与约束。
+3. 相似度检查：需要新建的组件/函数若与已有实现相似度 ≥80%（功能、入参、交互、场景 4 项中 3 项一致），先与用户确认是"调整已有"还是"新建"，禁止直接绕过已有实现另起炉灶。
 4. 实现最小改动。项目已有组件优先复用；新函数优先加入职责相同的已有文件。
-5. `.vue` 文件保持 SFC 区域顺序和清晰的组件边界；`.ts` 文件使用明确类型、窄化输入和可测试的纯函数边界。
-6. 异步边界按 `references/error-handling.md` 判断是否需要 try/catch，不能吞掉错误或重复处理错误。
-7. 运行项目已有的类型检查、测试和构建命令；至少验证受影响文件相关路径。
-8. 源码变更后按需执行 `query.js --refresh` 更新索引。项目已有 `.docs` 时可遵守其既有任务日志约定，但本技能不强制创建或维护 `.docs` 全量清单。
+5. `.vue` 文件保持 SFC 七区顺序（import → 类型 → 常量 → hooks → 状态/computed → 函数 → watch/onMounted），细节与反例见 `references/sfc-structure.md`；`.ts` 文件使用明确类型、窄化输入和可测试的纯函数边界。
+6. **类型规范（硬性）**：业务代码禁止 `as` 断言与 `any`（唯一例外：无类型定义的老 npm 库，断言处加注释说明，并优先补 `.d.ts`）；类型在定义处声明，API 函数出入参都有类型。详细规则见 `references/sfc-structure.md` 第 6 节。
+7. **目录规范（Vue 项目）**：页面专属组件放视图目录 `src/pages|views/<页面>/components/`；被 2+ 页面复用才提升 `src/components/business/`；二次封装的 UI 基础组件放 `src/components/base/`；`src/components/ui/` 只允许 shadcn CLI 生成，手写组件一律不进。业务代码禁止裸用原生交互元素（button/input/select 等）——优先 UI 库/已封装组件，没有就封装后再用；纯布局元素（div/section 等）不受限。UI 库组件第一次使用时即按设计稿封装。
+8. **Hook 抽取时机**：禁止第一时间创建 `useXxx`。逻辑先写在组件函数区；只有"已被 2+ 组件实际复用"且"与响应式状态耦合"（纯逻辑去 utils）才抽取。
+9. **错误处理（硬性）**：业务代码禁止 try/catch——API 错误由请求器拦截器统一处理；唯一例外是自己写的工具函数转换错误后**必须重抛**（禁止吞错）；`finally` 复位 loading 允许。判断标准与四种优雅用法见 `references/error-handling.md`。
+10. **文件规模限制（硬性）**：`.vue` ≤ 500 行、`<script setup>` ≤ 300 行、其他语言单文件 ≤ 500 行。超过时按优先级拆分：① 独立区块拆子组件/子模块 → ② 与状态无关的纯逻辑抽 utils → ③ 最后才考虑 composable，顺序不可颠倒。拆分必须做，不可以用"以后再拆"跳过；确实拆不动（如第三方生成代码）时向用户说明。验收用 `query.js --check` 确认无超限文件。
+11. **可访问性基础**：每个表单控件有可访问名称（label 或 aria-label）；纯图标按钮必须有 aria-label；列表/内容为空时渲染可见空态文案。
+12. 运行项目已有的类型检查、测试和构建命令；至少验证受影响文件相关路径。构建通过 ≠ 交互正确，条件允许时起 dev server 实测关键交互。
+13. 源码变更后按需执行 `query.js --refresh` 更新索引。项目已有 `.docs` 时可遵守其既有任务日志约定，但本技能不强制创建或维护 `.docs` 全量清单。
+
+## 完成前检查
+
+任务结束前运行（无超限文件即通过）：
+
+```bash
+node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --check
+```
+
+输出超过规模限制的文件清单及行数；`.vue` 同时给出 script 区行数。有超限时先拆分再收工。
 
 ## 子技能路由
 
@@ -82,12 +97,14 @@ node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --refresh
 - Vue 测试：`$skill: vue-testing-best-practices`
 - Pinia：`$skill: vue-pinia-best-practices`
 - Router：`$skill: vue-router-best-practices`
+- shadcn-vue 项目：`$skill: shadcn-vue`（critical rules 为强制约束：条件类用 `cn()`、v-model 优先、间距用 flex gap、图标按钮带 aria-label）
+- 默认工具链：`$skill: rattail`（工具函数优先用 rattail，不重复引 lodash；请求器 createAxle）
 
 只在任务确实需要时加载子技能，避免重复加载规则。
 
 ## 共享资源
 
-- `scripts/query.js`：栈检测（--init）、增量索引（JSON/SQLite 自动切换）与按名称查询
+- `scripts/query.js`：栈检测（--init）、增量索引（JSON/SQLite 自动切换）、按名称查询、规模检查（--check）
 - `.coder/profile.json`：项目栈档案（--init 生成，首次引导的依据）
 - `references/sfc-structure.md`：Vue SFC 结构规范
 - `references/error-handling.md`：错误处理规范
