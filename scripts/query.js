@@ -13,7 +13,7 @@ const FUNCTION_DIRS = new Set(['utils', 'util', 'lib', 'libs', 'helpers', 'helpe
 const SQLITE_THRESHOLD_ENTRIES = 300; // at 300+ entries the index switches from JSON to SQLite
 
 function usage() {
-  console.log(`Usage: node query.js [options] <name>\n\nOptions:\n  --root <dir>       Project root (default: current directory)\n  --init             Detect stack (framework/version/language) and write .coder/profile.json\n  --refresh          Incrementally rebuild the local index\n  --check            Verify file size limits (.vue ≤ 500, script ≤ 300, others ≤ 500 lines)\n  --json             Print machine-readable JSON\n  --kind <kind>      component, function, or all (default: all)\n  --db               Force SQLite index mode (auto when > ${SQLITE_THRESHOLD_ENTRIES} entries)\n  --no-db            Force JSON index mode\n  --help             Show this help`);
+  console.log(`Usage: node query.js [options] <name>\n\nOptions:\n  --root <dir>       Project root (default: current directory)\n  --init             Detect stack (framework/version/language) and write .coder/profile.json\n  --refresh          Incrementally rebuild the local index\n  --check            Verify file size limits (.vue ≤ 500, script ≤ 300, others ≤ 500 lines)\n  --json             Print machine-readable JSON\n  --no-snippet       Text output only: skip source snippets\n  --lines <n>        Snippet length in lines (default 30)\n  --kind <kind>      component, function, or all (default: all)\n  --db               Force SQLite index mode (auto when > ${SQLITE_THRESHOLD_ENTRIES} entries)\n  --no-db            Force JSON index mode\n  --help             Show this help`);
 }
 
 function parseArgs(argv) {
@@ -24,6 +24,8 @@ function parseArgs(argv) {
     else if (arg === '--init') opts.init = true;
     else if (arg === '--refresh') opts.refresh = true;
   else if (arg === '--check') opts.check = true;
+  else if (arg === '--no-snippet') opts.noSnippet = true;
+  else if (arg === '--lines') opts.lines = argv[++i];
     else if (arg === '--json') opts.json = true;
     else if (arg === '--db') opts.db = true;
     else if (arg === '--no-db') opts.db = false;
@@ -71,6 +73,58 @@ function exportsFrom(text) {
   const defaults = text.match(/export\s+default\s+(?:function|class)?\s*([A-Za-z_$][\w$]*)?/);
   if (defaults && defaults[1]) names.push(`default:${defaults[1]}`);
   return [...new Set(names)];
+}
+
+// Per-symbol locations with start/end lines, plus the file's import list.
+function locateExports(text) {
+  const lines = text.split('\n');
+  const symbols = [];
+  const re = /export\s+(?:default\s+)?(?:async\s+)?(function\*?|const|let|class)\s+([A-Za-z_$][\w$]*)?/;
+  for (let i = 0; i < lines.length; i += 1) {
+    const match = lines[i].match(re);
+    if (!match) continue;
+    const name = match[2] || 'default';
+    let end = i;
+    if (match[1] === 'function' || match[1] === 'function*' || match[1] === 'class') {
+      // Brace matching from the first { after the signature.
+      let depth = 0;
+      let started = false;
+      outer: for (let j = i; j < lines.length; j += 1) {
+        for (const ch of lines[j]) {
+          if (ch === '{') {
+            depth += 1;
+            started = true;
+          } else if (ch === '}') {
+            depth -= 1;
+            if (started && depth === 0) {
+              end = j;
+              break outer;
+            }
+          }
+        }
+      }
+    } else {
+      // const/let: ends at the line where braces/brackets balance (or same line for simple values).
+      let depth = 0;
+      for (let j = i; j < lines.length; j += 1) {
+        for (const ch of lines[j]) {
+          if ('{[('.includes(ch)) depth += 1;
+          else if ('}])'.includes(ch)) depth -= 1;
+        }
+        end = j;
+        if (j > i && depth <= 0) break;
+        if (j === i && depth <= 0 && !/[{[(]/.test(lines[j])) break;
+      }
+    }
+    symbols.push({ name, startLine: i + 1, endLine: end + 1 });
+  }
+  const imports = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = lines[i].match(/import\s+(?:type\s+)?[\s\S]*?from\s+['"]([^'"]+)['"]/);
+    if (m) imports.push({ source: m[1], line: i + 1 });
+    else if (/^import\s+['"]/.test(lines[i].trim())) imports.push({ source: lines[i].trim().replace(/^import\s+['"]|['"];.*$/g, ''), line: i + 1 });
+  }
+  return { symbols, imports };
 }
 
 function componentInfo(text) {
@@ -241,13 +295,15 @@ function buildEntries(root, previousEntries = []) {
     const stat = fs.statSync(file);
     const cached = byPath.get(relative);
     // Incremental: reuse unchanged entries (same size + mtime), re-read only modified files.
-    if (cached && cached.bytes === stat.size && cached.mtimeMs === stat.mtimeMs) {
+    // Old-index entries missing v3 fields (lines/imports/located exports) are re-read instead of reused.
+    if (cached && cached.bytes === stat.size && cached.mtimeMs === stat.mtimeMs && typeof cached.lines === 'number' && Array.isArray(cached.imports) && cached.exports?.length && typeof cached.exports[0] === 'object') {
       entries.push(cached);
       continue;
     }
     const text = fs.readFileSync(file, 'utf8');
     const kind = classify(file);
-    entries.push({ name: path.basename(file, path.extname(file)), path: relative, kind, extension: path.extname(file).slice(1), exports: exportsFrom(text), ...kind === 'component' ? componentInfo(text) : {}, bytes: stat.size, mtimeMs: stat.mtimeMs, hash: crypto.createHash('sha1').update(text).digest('hex').slice(0, 12) });
+    const { symbols, imports } = locateExports(text);
+    entries.push({ name: path.basename(file, path.extname(file)), path: relative, kind, extension: path.extname(file).slice(1), lines: text.split('\n').length, exports: symbols, imports, ...kind === 'component' ? componentInfo(text) : {}, bytes: stat.size, mtimeMs: stat.mtimeMs, hash: crypto.createHash('sha1').update(text).digest('hex').slice(0, 12) });
   }
   return entries;
 }
@@ -291,10 +347,12 @@ function ensureSqliteAvailable(root) {
     name TEXT NOT NULL,
     kind TEXT NOT NULL,
     extension TEXT NOT NULL,
+    lines INTEGER NOT NULL DEFAULT 0,
     bytes INTEGER NOT NULL,
     mtime_ms INTEGER NOT NULL,
     hash TEXT NOT NULL,
     exports TEXT NOT NULL,
+    imports TEXT NOT NULL DEFAULT '[]',
     props TEXT NOT NULL,
     emits TEXT NOT NULL,
     has_template INTEGER NOT NULL,
@@ -302,6 +360,7 @@ function ensureSqliteAvailable(root) {
   );
   CREATE INDEX IF NOT EXISTS idx_files_name ON files(name);
   CREATE INDEX IF NOT EXISTS idx_files_kind ON files(kind);`);
+  ensureSqliteTableColumns(db);
   return { db, dbPath };
 }
 
@@ -315,18 +374,18 @@ function buildIndex(root, opts) {
   if (backend === 'sqlite') {
     const { db, dbPath } = ensureSqliteAvailable(root);
     db.exec('DELETE FROM files');
-    const insert = db.prepare('INSERT INTO files (path, name, kind, extension, bytes, mtime_ms, hash, exports, props, emits, has_template, has_script_setup) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    const insert = db.prepare('INSERT INTO files (path, name, kind, extension, lines, bytes, mtime_ms, hash, exports, imports, props, emits, has_template, has_script_setup) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
     for (const entry of entries) {
-      insert.run(entry.path, entry.name, entry.kind, entry.extension, entry.bytes, Math.round(entry.mtimeMs), entry.hash, JSON.stringify(entry.exports || []), JSON.stringify(entry.props || []), JSON.stringify(entry.emits || []), entry.hasTemplate ? 1 : 0, entry.hasScriptSetup ? 1 : 0);
+      insert.run(entry.path, entry.name, entry.kind, entry.extension, entry.lines, entry.bytes, Math.round(entry.mtimeMs), entry.hash, JSON.stringify(entry.exports || []), JSON.stringify(entry.imports || []), JSON.stringify(entry.props || []), JSON.stringify(entry.emits || []), entry.hasTemplate ? 1 : 0, entry.hasScriptSetup ? 1 : 0);
     }
     db.close();
-    writeMeta(root, { version: 2, backend: 'sqlite', autoChosen, generatedAt: new Date().toISOString(), count: entries.length, dbPath: '.coder/index.sqlite' });
+    writeMeta(root, { version: 3, backend: 'sqlite', autoChosen, generatedAt: new Date().toISOString(), count: entries.length, dbPath: '.coder/index.sqlite' });
     return { backend: 'sqlite', dbPath, count: entries.length };
   }
   fs.mkdirSync(path.join(root, '.coder'), { recursive: true });
-  const payload = { version: 2, backend: 'json', generatedAt: new Date().toISOString(), root, entries };
+  const payload = { version: 3, backend: 'json', generatedAt: new Date().toISOString(), root, entries };
   fs.writeFileSync(path.join(root, '.coder', 'index.json'), `${JSON.stringify(payload, null, 2)}\n`);
-  writeMeta(root, { version: 2, backend: 'json', autoChosen, generatedAt: payload.generatedAt, count: entries.length });
+  writeMeta(root, { version: 3, backend: 'json', autoChosen, generatedAt: payload.generatedAt, count: entries.length });
   return { backend: 'json', indexPath: path.join(root, '.coder', 'index.json'), count: entries.length };
 }
 
@@ -348,7 +407,9 @@ function readIndex(root, opts = {}) {
         path: row.path,
         kind: row.kind,
         extension: row.extension,
+        lines: row.lines,
         exports: JSON.parse(row.exports),
+        imports: JSON.parse(row.imports),
         ...(row.kind === 'component' ? { props: JSON.parse(row.props), emits: JSON.parse(row.emits), hasTemplate: Boolean(row.has_template), hasScriptSetup: Boolean(row.has_script_setup) } : {}),
         bytes: row.bytes,
         mtimeMs: row.mtime_ms,
@@ -366,21 +427,41 @@ function readIndex(root, opts = {}) {
 
 // ---------- Output ----------
 
+function ensureSqliteTableColumns(db) {
+  // version 3 added lines + imports columns; migrate old databases in place.
+  const cols = db.prepare("PRAGMA table_info(files)").all().map((c) => c.name);
+  if (!cols.includes('lines')) db.exec('ALTER TABLE files ADD COLUMN lines INTEGER NOT NULL DEFAULT 0');
+  if (!cols.includes('imports')) db.exec("ALTER TABLE files ADD COLUMN imports TEXT NOT NULL DEFAULT '[]'");
+}
+
 function printResults(opts, root, matches) {
   if (opts.json) return console.log(JSON.stringify({ query: opts.name, backend: matches.backend, results: matches.entries }, null, 2));
   if (!matches.entries.length) throw new Error(`No match for "${opts.name}"${opts.kind === 'all' ? '' : ` (${opts.kind})`}. Run with --refresh after source changes.`);
+  const snippetLines = Number(opts.lines) || 30;
   for (const entry of matches.entries) {
     console.log(`## ${entry.name} [${entry.kind}]`);
-    console.log(`- File: ${entry.path}`);
-    if (entry.exports?.length) console.log(`- Exports: ${entry.exports.join(', ')}`);
+    console.log(`- File: ${entry.path} (${entry.lines || '?'} lines)`);
+    if (entry.imports?.length) console.log(`- Imports: ${entry.imports.map((i) => `${i.source}:${i.line}`).join(', ')}`);
+    if (entry.exports?.length) console.log(`- Exports: ${entry.exports.map((e) => `${e.name} @ L${e.startLine}-${e.endLine}`).join(', ')}`);
     if (entry.kind === 'component') console.log(`- SFC: template=${entry.hasTemplate}, script setup=${entry.hasScriptSetup}, props=${entry.props.join(', ') || 'none'}, emits=${entry.emits.join(', ') || 'none'}`);
     console.log(`- Index hash: ${entry.hash}`);
+    if (!opts.noSnippet && entry.exports?.length) {
+      const text = fs.readFileSync(entry.absolutePath, 'utf8').split('\n');
+      for (const symbol of entry.exports.slice(0, 5)) {
+        const from = Math.max(0, symbol.startLine - 1);
+        const to = Math.min(text.length, symbol.startLine - 1 + snippetLines);
+        console.log(`\n\`\`\`${entry.extension} ${symbol.name} L${symbol.startLine}-${symbol.endLine}`);
+        console.log(text.slice(from, to).join('\n'));
+        if (to < symbol.endLine) console.log(`... (${symbol.endLine - snippetLines - symbol.startLine + 2} more lines)`);
+        console.log('```');
+      }
+    }
   }
 }
 
 function runQuery(opts, root, index) {
   const query = opts.name.toLowerCase();
-  const matched = index.entries.filter((entry) => (opts.kind === 'all' || entry.kind === opts.kind) && [entry.name, entry.path, ...entry.exports].some((value) => value.toLowerCase().includes(query)));
+  const matched = index.entries.filter((entry) => (opts.kind === 'all' || entry.kind === opts.kind) && [entry.name, entry.path, ...entry.exports.map((e) => e.name || ''), ...(entry.imports || []).map((i) => i.source)].some((value) => value.toLowerCase().includes(query)));
   const entries = matched.map((entry) => ({ ...entry, absolutePath: path.join(root, entry.path) }));
   printResults(opts, root, { backend: index.backend || 'json', entries });
 }
@@ -452,6 +533,13 @@ function main() {
     return console.log(opts.json ? JSON.stringify(built, null, 2) : `Indexed ${built.count} files (${built.backend}) in ${built.dbPath || built.indexPath}`);
   }
   const index = readIndex(root);
+  // v2 indexes stored exports as plain strings; upgrade them in memory (locations need --refresh).
+  if (index.entries.some((e) => e.exports?.length && typeof e.exports[0] === 'string')) {
+    for (const entry of index.entries) {
+      if (entry.exports?.length && typeof entry.exports[0] === 'string') entry.exports = entry.exports.map((name) => ({ name, startLine: 0, endLine: 0 }));
+      entry.imports = entry.imports || [];
+    }
+  }
   runQuery(opts, root, index);
 }
 

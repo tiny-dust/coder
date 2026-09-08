@@ -118,7 +118,7 @@ node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --check
 
 ## 共享资源
 
-- `scripts/query.js`：栈检测（--init）、增量索引（JSON/SQLite 自动切换）、按名称查询、规模检查（--check）
+- `scripts/query.js`：栈检测（--init）、增量索引 v3（行号定位/导入清单/源码片段，JSON/SQLite 自动切换）、按名称查询、规模检查（--check）
 - `.coder/profile.json`：项目栈档案（--init 生成，首次引导的依据）
 - `references/sfc-structure.md`：Vue SFC 结构规范
 - `references/error-handling.md`：错误处理规范
