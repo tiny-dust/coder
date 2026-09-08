@@ -1,5 +1,7 @@
 # Coder
 
+[![skills.sh](https://skills.sh/b/tiny-dust/coder)](https://skills.sh/tiny-dust/coder)
+
 面向 Vue 3 与 TypeScript 项目的开发调度技能。它根据编辑文件的后缀自动匹配规则，并通过本地 Node.js 索引按需查询已有组件和工具函数，减少重复读取项目文档和无关源码。
 
 ## 安装
@@ -8,22 +10,22 @@
 
 ```bash
 # 交互式安装（自动检测已装 agent）
-npx skills add <github-username>/coder
+npx skills add tiny-dust/coder
 
 # 全局安装（所有项目可用）
-npx skills add <github-username>/coder -g
+npx skills add tiny-dust/coder -g
 
 # 指定 agent 与免交互
-npx skills add <github-username>/coder -a claude-code -y
+npx skills add tiny-dust/coder -a claude-code -y
 
 # 只看不装
-npx skills add <github-username>/coder --list
+npx skills add tiny-dust/coder --list
 ```
 
 也可以直接克隆或引用单个文件：
 
 ```bash
-git clone https://github.com/<github-username>/coder.git ~/.claude/skills/coder
+git clone https://github.com/tiny-dust/coder.git ~/.claude/skills/coder
 ```
 
 ## 核心铁律
