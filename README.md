@@ -2,6 +2,30 @@
 
 面向 Vue 3 与 TypeScript 项目的开发调度技能。它根据编辑文件的后缀自动匹配规则，并通过本地 Node.js 索引按需查询已有组件和工具函数，减少重复读取项目文档和无关源码。
 
+## 安装
+
+通过 [skills.sh](https://skills.sh) 生态安装（支持 Claude Code、Codex、Cursor、OpenCode 等 70+ agent）：
+
+```bash
+# 交互式安装（自动检测已装 agent）
+npx skills add <github-username>/coder
+
+# 全局安装（所有项目可用）
+npx skills add <github-username>/coder -g
+
+# 指定 agent 与免交互
+npx skills add <github-username>/coder -a claude-code -y
+
+# 只看不装
+npx skills add <github-username>/coder --list
+```
+
+也可以直接克隆或引用单个文件：
+
+```bash
+git clone https://github.com/<github-username>/coder.git ~/.claude/skills/coder
+```
+
 ## 核心铁律
 
 **禁止过度设计与过度开发，永远用最简洁的方式实现当前需求。** 不做需求外的抽象与配置项，不为未来可能写代码。发现逻辑 bug 时先完成当前开发，再与用户确认是否修复。
