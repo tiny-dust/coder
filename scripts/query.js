@@ -96,38 +96,117 @@ const UI_LIBRARIES = {
 };
 const STATE_LIBRARIES = { pinia: 'Pinia', vuex: 'Vuex' };
 const HTTP_LIBRARIES = { axios: 'Axios', '@vueuse/core': 'VueUse', 'ofetch': 'ofetch' };
+// Server-side frameworks & notable libraries (any JS/TS backend).
+const SERVER_LIBRARIES = {
+  hono: 'Hono',
+  express: 'Express',
+  fastify: 'Fastify',
+  '@nestjs/core': 'NestJS',
+  koa: 'Koa',
+  'drizzle-orm': 'Drizzle ORM',
+  prisma: 'Prisma',
+  '@prisma/client': 'Prisma',
+  mongoose: 'Mongoose',
+  'graphql': 'GraphQL',
+  ws: 'ws (WebSocket)',
+  mqtt: 'MQTT',
+  protobufjs: 'Protobuf',
+};
 
 function semverClean(value) {
   return typeof value === 'string' ? value.replace(/[^0-9.]/g, '') : '';
 }
 
+// Resolve pnpm catalog versions ("catalog:" specifiers) via pnpm-workspace.yaml.
+function loadPnpmCatalog(root) {
+  const file = path.join(root, 'pnpm-workspace.yaml');
+  if (!fs.existsSync(file)) return { catalog: {}, globs: [] };
+  const catalog = {};
+  const globs = [];
+  let section = null;
+  for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed === 'catalog:' || trimmed.startsWith('catalogs:')) {
+      section = 'catalog';
+      continue;
+    }
+    if (trimmed === 'packages:') {
+      section = 'packages';
+      continue;
+    }
+    if (!line.startsWith(' ') || !trimmed) continue;
+    if (section === 'catalog' && trimmed.includes(':')) {
+      const [name, version] = trimmed.split(':');
+      catalog[name.trim().replace(/^['"]|['"]$/g, '')] = String(version || '').trim().replace(/^['"]|['"]$/g, '');
+    }
+    if (section === 'packages' && trimmed.startsWith('- ')) globs.push(trimmed.slice(2).trim().replace(/^['"]|['"]$/g, ''));
+  }
+  return { catalog, globs };
+}
+
+// Collect member package.json files declared by pnpm workspace globs (apps/*/web, packages/*).
+function workspaceMembers(root, globs) {
+  const members = [];
+  for (const glob of globs) {
+    const base = glob.split('/*')[0];
+    const dir = path.join(root, base);
+    if (!fs.existsSync(dir)) continue;
+    const suffix = glob.split('/*').slice(1).join('/');
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      const pkgPath = path.join(dir, entry.name, suffix, 'package.json').replace(/\/+$/, (m) => m);
+      const normalized = suffix ? path.join(dir, entry.name, suffix, 'package.json') : path.join(dir, entry.name, 'package.json');
+      if (fs.existsSync(normalized)) members.push(JSON.parse(fs.readFileSync(normalized, 'utf8')));
+      void pkgPath;
+    }
+  }
+  return members;
+}
+
 function detectStack(root) {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const { catalog, globs } = loadPnpmCatalog(root);
+  // All dependency sources: root pkg + pnpm catalog + workspace member packages.
   const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+  for (const [name, version] of Object.entries(catalog)) {
+    if (deps[name] === 'catalog:' || !(name in deps)) deps[name] = version;
+  }
+  const members = workspaceMembers(root, globs);
+  for (const member of members) {
+    for (const [name, version] of Object.entries({ ...(member.dependencies || {}), ...(member.devDependencies || {}) })) {
+      deps[name] = version === 'catalog:' ? (catalog[name] ?? version) : version;
+    }
+  }
+  const versionOf = (name) => (deps[name] === 'catalog:' ? '' : semverClean(deps[name]));
   const has = (name) => Boolean(deps[name]);
   const language = {
     typescript: has('typescript') || fs.existsSync(path.join(root, 'tsconfig.json')),
-    version: deps.typescript ? semverClean(deps.typescript) : null,
+    version: has('typescript') ? versionOf('typescript') : null,
   };
   const frameworks = [];
   const fileTypes = [];
   if (deps.vue) {
-    frameworks.push({ name: 'vue', version: semverClean(deps.vue) });
+    frameworks.push({ name: 'vue', version: versionOf('vue'), role: 'frontend' });
     fileTypes.push({ extension: '.vue', role: 'component' });
   }
-  if (deps.react) frameworks.push({ name: 'react', version: semverClean(deps.react) });
-  if (deps.svelte) frameworks.push({ name: 'svelte', version: semverClean(deps.svelte) });
-  const viteVersion = deps.vite || (pkg.devDependencies && pkg.devDependencies.vite);
-  const bundler = viteVersion ? { name: 'vite', version: semverClean(viteVersion) } : null;
-  const router = deps['vue-router'] ? { name: 'vue-router', version: semverClean(deps['vue-router']) } : null;
-  const ui = Object.keys(UI_LIBRARIES).filter(has).map((name) => ({ name, label: UI_LIBRARIES[name], version: semverClean(deps[name]) }));
-  const state = Object.keys(STATE_LIBRARIES).filter(has).map((name) => ({ name, label: STATE_LIBRARIES[name], version: semverClean(deps[name]) }));
-  const http = Object.keys(HTTP_LIBRARIES).filter(has).map((name) => ({ name, label: HTTP_LIBRARIES[name], version: semverClean(deps[name]) }));
+  if (deps.react) frameworks.push({ name: 'react', version: versionOf('react'), role: 'frontend' });
+  if (deps.svelte) frameworks.push({ name: 'svelte', version: versionOf('svelte'), role: 'frontend' });
+  for (const name of ['hono', 'express', 'fastify', '@nestjs/core', 'koa']) {
+    if (deps[name]) frameworks.push({ name, version: versionOf(name), role: 'server' });
+  }
+  const viteVersion = deps.vite || deps['vite-plus'];
+  const bundler = viteVersion ? { name: deps.vite ? 'vite' : 'vite-plus (rolldown/vite)', version: semverClean(String(viteVersion)) } : null;
+  const router = deps['vue-router'] ? { name: 'vue-router', version: versionOf('vue-router') } : null;
+  const ui = Object.keys(UI_LIBRARIES).filter(has).map((name) => ({ name, label: UI_LIBRARIES[name], version: versionOf(name) }));
+  const state = Object.keys(STATE_LIBRARIES).filter(has).map((name) => ({ name, label: STATE_LIBRARIES[name], version: versionOf(name) }));
+  const http = Object.keys(HTTP_LIBRARIES).filter(has).map((name) => ({ name, label: HTTP_LIBRARIES[name], version: versionOf(name) }));
+  const server = Object.keys(SERVER_LIBRARIES).filter(has).map((name) => ({ name, label: SERVER_LIBRARIES[name], version: versionOf(name) }));
   for (const ext of ['.ts', '.tsx', '.js']) if (walkExtensions(root, ext).length) fileTypes.push({ extension: ext, role: ext === '.ts' || ext === '.tsx' ? 'logic' : 'legacy' });
   return {
     generatedAt: new Date().toISOString(),
     projectRoot: root,
     projectName: pkg.name || path.basename(root),
+    workspace: globs.length ? { members: globs, packagesScanned: members.length } : null,
     language,
     bundler,
     frameworks,
@@ -135,8 +214,9 @@ function detectStack(root) {
     ui,
     state,
     http,
+    server,
     fileTypes,
-    toolchain: { linter: deps.oxlint ? 'oxlint' : null, formatter: deps.oxfmt ? 'oxfmt' : null, test: deps.vitest ? 'vitest' : null },
+    toolchain: { linter: deps.oxlint ? 'oxlint' : null, formatter: deps.oxfmt ? 'oxfmt' : null, test: deps.vitest || deps['vite-plus'] ? 'vitest (via vite-plus)' : null },
   };
 }
 
@@ -353,11 +433,13 @@ function main() {
     if (opts.json) return console.log(JSON.stringify(profile, null, 2));
     console.log(`Stack profile written to ${path.join(root, '.coder/profile.json')}`);
     console.log(`Project: ${profile.projectName}`);
-    console.log(`Frameworks: ${profile.frameworks.map((f) => `${f.name}@${f.version || '?'}`).join(', ') || 'none'}`);
+    console.log(`Frameworks: ${profile.frameworks.map((f) => `${f.name}@${f.version || '?'} (${f.role})`).join(', ') || 'none'}`);
     console.log(`Bundler: ${profile.bundler ? `${profile.bundler.name}@${profile.bundler.version}` : 'unknown'}`);
     console.log(`Router: ${profile.router ? `${profile.router.name}@${profile.router.version}` : 'none'}`);
     console.log(`UI: ${profile.ui.map((u) => u.label).join(', ') || 'none'}`);
     console.log(`State: ${profile.state.map((s) => s.label).join(', ') || 'none'}`);
+    console.log(`Server: ${profile.server.map((s) => `${s.label}@${s.version || '?'}`).join(', ') || 'none'}`);
+    console.log(`Workspace: ${profile.workspace ? `${profile.workspace.packagesScanned} member packages (${profile.workspace.members.join(', ')})` : 'single package'}`);
     console.log(`TypeScript: ${profile.language.typescript ? `yes${profile.language.version ? ` @ ${profile.language.version}` : ''}` : 'no'}`);
     console.log(`File types: ${profile.fileTypes.map((f) => f.extension).join(', ') || 'none'}`);
     console.log(`Toolchain: ${Object.values(profile.toolchain).filter(Boolean).join(', ') || 'none'}`);
