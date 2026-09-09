@@ -84,15 +84,22 @@ const userStore = useUserStore()  // 项目内已存在的 hook
 
 ### 2.5 ref / reactive / computed
 
-- ref 管原始值，reactive 管对象（或统一用 ref 亦可，团队一致性优先）。
-- computed 紧跟在它依赖的 ref 之后声明。
-- 声明即初始化，禁止先声明后赋值（`let x = ref()` 反模式）。
+- `ref` 管原始值或需要整体替换的状态；`reactive` 管多个字段始终一起使用的对象。一个组件优先选一种主要状态写法，除非边界清楚。
+- 只有**依赖响应式值且需要缓存派生结果**时使用 `computed`；静态转换或不依赖响应式状态的逻辑使用普通纯函数。
+- computed 必须是纯函数：只读取依赖并返回结果；禁止在 computed 内请求、修改 ref/reactive、写 store、弹 toast 或产生其他副作用。
+- computed 必须保持浅显易懂：默认只提取纯粹的响应式派生值，不承载请求、修改状态或复杂业务流程；复杂逻辑拆成语义明确的中间 computed 或普通纯函数。
+- 一个 computed 只表达一个业务概念，必须使用语义名称（如 `completedTodos`、`canSubmit`、`hasPermission`），禁止 `data1`、`isOk` 等无意义名称。
+- computed getter 超过约 10 行、包含 3 个以上独立判断，或依赖 4 个以上状态时，先拆成语义明确的中间 computed/纯函数；不要为了“统一”创建通用计算框架。
+- `computed` 默认只使用只读 getter 写法，必须保持浅显易懂；**禁止为了少写一个 `ref` 或事件处理而使用 `computed({ get, set })`**。
+- 只有第三方组件明确要求双向 `v-model` 适配、且无法用普通 `ref` + 事件处理清楚表达时，才允许 writable computed；必须在代码旁用一句注释说明外部约束。
+- 模板中的多条件判断、嵌套三元、超过一行的派生逻辑，提取为命名 computed 或纯函数；不要把业务判断堆在模板里。
 
 ```ts
-const loading = ref(false)
-const form = reactive<LoginForm>({ ...DEFAULT_FORM })
-const canSubmit = computed(() => form.username && form.password && !loading.value)
+const completedTodos = computed(() => todos.value.filter((todo) => todo.done))
+const canSubmit = computed(() => Boolean(form.username) && form.password.length >= 6)
+const formatDate = (value: Date): string => value.toISOString() // 无响应式依赖，用普通函数
 ```
+
 
 ### 2.6 函数区
 

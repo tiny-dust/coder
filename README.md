@@ -59,8 +59,11 @@ node scripts/query.js --root /path/to/project --init      # 栈检测，生成 .
 node scripts/query.js --root /path/to/project --refresh
 node scripts/query.js --root /path/to/project --kind component BaseButton
 node scripts/query.js --root /path/to/project --kind function formatDate --json
+node scripts/query.js --root /path/to/project --check
 node scripts/query.js --root /path/to/project --db --refresh   # 强制 SQLite 索引
 ```
+
+查询结果现在包含文件总行数、导入来源及行号、导出符号的起止行号、Vue props/emits/computed 摘要和对应源码片段。普通文本查询默认附带最多 30 行片段；用 `--lines 10` 调整或 `--no-snippet` 关闭。`--check` 检查 `.vue` 总行数/所有 script 总行数，以及 `.ts/.tsx/.js/.jsx` 单文件行数，超限返回非零退出码。
 
 索引写入目标项目的 `.coder/`（`index.json` 或 `index.sqlite`，由条目数自动决定，>300 条切换 SQLite；SQLite 需要 Node ≥ 22.5）。索引只保存文件路径、导出名、SFC 接口摘要和哈希，不保存源码正文。建议在目标项目的 `.gitignore` 中加入 `.coder/`；需要团队共享索引时也可以提交它。
 

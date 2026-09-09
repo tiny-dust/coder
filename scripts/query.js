@@ -6,7 +6,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const IGNORE = new Set(['node_modules', '.git', '.coder', 'dist', 'build', 'coverage']);
-const SOURCE_EXTENSIONS = new Set(['.vue', '.ts']);
+const SOURCE_EXTENSIONS = new Set(['.vue', '.ts', '.tsx', '.js', '.jsx']);
+const CHECK_EXTENSIONS = new Set(['.vue', '.ts', '.tsx', '.js', '.jsx']);
 const COMPONENT_DIRS = new Set(['components', 'component', 'views', 'pages', 'layouts', 'widgets']);
 const FUNCTION_DIRS = new Set(['utils', 'util', 'lib', 'libs', 'helpers', 'helper', 'composables', 'shared']);
 // Larger projects switch to a SQLite index automatically (SQLite loads per-row instead of the whole JSON).
@@ -38,14 +39,19 @@ function parseArgs(argv) {
   return opts;
 }
 
-function walk(dir, out = []) {
+function walk(dir, out = [], extensions = SOURCE_EXTENSIONS) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (IGNORE.has(entry.name) || entry.name.startsWith('.')) continue;
     const file = path.join(dir, entry.name);
-    if (entry.isDirectory()) walk(file, out);
-    else if (SOURCE_EXTENSIONS.has(path.extname(entry.name))) out.push(file);
+    if (entry.isDirectory()) walk(file, out, extensions);
+    else if (extensions.has(path.extname(entry.name))) out.push(file);
   }
   return out;
+}
+
+function countLines(text) {
+  if (!text) return 0;
+  return text.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n').length;
 }
 
 function projectRoot(start) {
@@ -132,9 +138,69 @@ function componentInfo(text) {
   const generic = text.match(/defineProps\s*<([\s\S]*?)>\s*\(/);
   if (generic) for (const match of generic[1].matchAll(/([A-Za-z_$][\w$]*)\s*[?:]/g)) props.push(match[1]);
   const object = text.match(/defineProps\s*\(\s*\{([\s\S]*?)\}\s*\)/);
-  if (object) for (const match of object[1].matchAll(/([A-Za-z_$][\w$]*)\s*:/g)) props.push(match[1]);
-  const emits = [...text.matchAll(/defineEmits\s*\(\s*\[([\s\S]*?)\]/g)].flatMap((m) => [...m[1].matchAll(/["']([^"']+)["']/g)].map((x) => x[1]));
-  return { props: [...new Set(props)], emits: [...new Set(emits)], hasTemplate: /<template\b/.test(text), hasScriptSetup: /<script\s+setup/.test(text) };
+  if (object) {
+    // Collect only top-level keys; nested `{ type: ... }` config fields are not props.
+    const source = object[1];
+    let depth = 0;
+    let inString = '';
+    for (let i = 0; i < source.length; i += 1) {
+      const ch = source[i];
+      if (inString) {
+        if (ch === inString && source[i - 1] !== '\\') inString = '';
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        inString = ch;
+        continue;
+      }
+      if (ch === '{' || ch === '[' || ch === '(') {
+        depth += 1;
+        continue;
+      }
+      if (ch === '}' || ch === ']' || ch === ')') {
+        depth -= 1;
+        continue;
+      }
+      if (depth !== 0 || !/[A-Za-z_$]/.test(ch)) continue;
+      const match = source.slice(i).match(/^([A-Za-z_$][\w$]*)\s*:/);
+      if (match) {
+        props.push(match[1]);
+        i += match[0].length - 1;
+      }
+    }
+  }
+  const emits = [...text.matchAll(/defineEmits\s*(?:<([\s\S]*?)>|\(\s*\[([\s\S]*?)\]\s*\))/g)].flatMap((m) => [...(m[1] || m[2] || '').matchAll(/["']([^"']+)["']/g)].map((x) => x[1]));
+  return { props: [...new Set(props)], emits: [...new Set(emits)], hasTemplate: /<template\b/.test(text), hasScriptSetup: /<script\s+setup/.test(text), computed: computedInfo(text) };
+}
+
+function computedInfo(text) {
+  const lines = text.split('\n');
+  const computed = [];
+  const re = /(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*computed\s*\(/;
+  for (let i = 0; i < lines.length; i += 1) {
+    const match = lines[i].match(re);
+    if (!match) continue;
+    const form = /computed\s*\(\s*\{/.test(lines[i]) ? 'object' : 'getter';
+    let end = i;
+    let depth = 0;
+    let started = false;
+    outer: for (let j = i; j < lines.length; j += 1) {
+      for (const ch of lines[j]) {
+        if ('({['.includes(ch)) {
+          depth += 1;
+          started = true;
+        } else if ('})]'.includes(ch)) {
+          depth -= 1;
+          if (started && depth === 0) {
+            end = j;
+            break outer;
+          }
+        }
+      }
+    }
+    computed.push({ name: match[1], form, startLine: i + 1, endLine: end + 1, lines: end - i + 1 });
+  }
+  return computed;
 }
 
 // ---------- Stack detection (--init) ----------
@@ -296,7 +362,7 @@ function buildEntries(root, previousEntries = []) {
     const cached = byPath.get(relative);
     // Incremental: reuse unchanged entries (same size + mtime), re-read only modified files.
     // Old-index entries missing v3 fields (lines/imports/located exports) are re-read instead of reused.
-    if (cached && cached.bytes === stat.size && cached.mtimeMs === stat.mtimeMs && typeof cached.lines === 'number' && Array.isArray(cached.imports) && cached.exports?.length && typeof cached.exports[0] === 'object') {
+    if (cached && cached.bytes === stat.size && Math.round(cached.mtimeMs) === Math.round(stat.mtimeMs) && typeof cached.lines === 'number' && Array.isArray(cached.imports) && Array.isArray(cached.exports) && (!cached.exports.length || typeof cached.exports[0] === 'object')) {
       entries.push(cached);
       continue;
     }
@@ -349,12 +415,13 @@ function ensureSqliteAvailable(root) {
     extension TEXT NOT NULL,
     lines INTEGER NOT NULL DEFAULT 0,
     bytes INTEGER NOT NULL,
-    mtime_ms INTEGER NOT NULL,
+    mtime_ms REAL NOT NULL,
     hash TEXT NOT NULL,
     exports TEXT NOT NULL,
     imports TEXT NOT NULL DEFAULT '[]',
     props TEXT NOT NULL,
     emits TEXT NOT NULL,
+    computed TEXT NOT NULL DEFAULT '[]',
     has_template INTEGER NOT NULL,
     has_script_setup INTEGER NOT NULL
   );
@@ -374,9 +441,9 @@ function buildIndex(root, opts) {
   if (backend === 'sqlite') {
     const { db, dbPath } = ensureSqliteAvailable(root);
     db.exec('DELETE FROM files');
-    const insert = db.prepare('INSERT INTO files (path, name, kind, extension, lines, bytes, mtime_ms, hash, exports, imports, props, emits, has_template, has_script_setup) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    const insert = db.prepare('INSERT INTO files (path, name, kind, extension, lines, bytes, mtime_ms, hash, exports, imports, props, emits, computed, has_template, has_script_setup) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
     for (const entry of entries) {
-      insert.run(entry.path, entry.name, entry.kind, entry.extension, entry.lines, entry.bytes, Math.round(entry.mtimeMs), entry.hash, JSON.stringify(entry.exports || []), JSON.stringify(entry.imports || []), JSON.stringify(entry.props || []), JSON.stringify(entry.emits || []), entry.hasTemplate ? 1 : 0, entry.hasScriptSetup ? 1 : 0);
+      insert.run(entry.path, entry.name, entry.kind, entry.extension, entry.lines, entry.bytes, entry.mtimeMs, entry.hash, JSON.stringify(entry.exports || []), JSON.stringify(entry.imports || []), JSON.stringify(entry.props || []), JSON.stringify(entry.emits || []), JSON.stringify(entry.computed || []), entry.hasTemplate ? 1 : 0, entry.hasScriptSetup ? 1 : 0);
     }
     db.close();
     writeMeta(root, { version: 3, backend: 'sqlite', autoChosen, generatedAt: new Date().toISOString(), count: entries.length, dbPath: '.coder/index.sqlite' });
@@ -410,7 +477,7 @@ function readIndex(root, opts = {}) {
         lines: row.lines,
         exports: JSON.parse(row.exports),
         imports: JSON.parse(row.imports),
-        ...(row.kind === 'component' ? { props: JSON.parse(row.props), emits: JSON.parse(row.emits), hasTemplate: Boolean(row.has_template), hasScriptSetup: Boolean(row.has_script_setup) } : {}),
+        ...(row.kind === 'component' ? { props: JSON.parse(row.props), emits: JSON.parse(row.emits), computed: JSON.parse(row.computed || '[]'), hasTemplate: Boolean(row.has_template), hasScriptSetup: Boolean(row.has_script_setup) } : {}),
         bytes: row.bytes,
         mtimeMs: row.mtime_ms,
         hash: row.hash,
@@ -432,6 +499,7 @@ function ensureSqliteTableColumns(db) {
   const cols = db.prepare("PRAGMA table_info(files)").all().map((c) => c.name);
   if (!cols.includes('lines')) db.exec('ALTER TABLE files ADD COLUMN lines INTEGER NOT NULL DEFAULT 0');
   if (!cols.includes('imports')) db.exec("ALTER TABLE files ADD COLUMN imports TEXT NOT NULL DEFAULT '[]'");
+  if (!cols.includes('computed')) db.exec("ALTER TABLE files ADD COLUMN computed TEXT NOT NULL DEFAULT '[]'");
 }
 
 function printResults(opts, root, matches) {
@@ -443,7 +511,7 @@ function printResults(opts, root, matches) {
     console.log(`- File: ${entry.path} (${entry.lines || '?'} lines)`);
     if (entry.imports?.length) console.log(`- Imports: ${entry.imports.map((i) => `${i.source}:${i.line}`).join(', ')}`);
     if (entry.exports?.length) console.log(`- Exports: ${entry.exports.map((e) => `${e.name} @ L${e.startLine}-${e.endLine}`).join(', ')}`);
-    if (entry.kind === 'component') console.log(`- SFC: template=${entry.hasTemplate}, script setup=${entry.hasScriptSetup}, props=${entry.props.join(', ') || 'none'}, emits=${entry.emits.join(', ') || 'none'}`);
+    if (entry.kind === 'component') console.log(`- SFC: template=${entry.hasTemplate}, script setup=${entry.hasScriptSetup}, props=${entry.props.join(', ') || 'none'}, emits=${entry.emits.join(', ') || 'none'}, computed=${entry.computed?.map((c) => `${c.name}@L${c.startLine}-${c.endLine}`).join(', ') || 'none'}`);
     console.log(`- Index hash: ${entry.hash}`);
     if (!opts.noSnippet && entry.exports?.length) {
       const text = fs.readFileSync(entry.absolutePath, 'utf8').split('\n');
@@ -472,15 +540,15 @@ const MAX_FILE_LINES = 500;
 const MAX_SCRIPT_LINES = 300;
 
 function runCheck(opts, root) {
-  const files = walk(root);
+  const files = walk(root, [], CHECK_EXTENSIONS);
   const violations = [];
   for (const file of files) {
     const text = fs.readFileSync(file, 'utf8');
-    const lines = text.split('\n').length;
+    const lines = countLines(text);
     const relative = path.relative(root, file);
     if (path.extname(file) === '.vue') {
-      const script = text.match(/<script[^>]*>([\s\S]*?)<\/script>/);
-      const scriptLines = script ? script[1].split('\n').length : 0;
+      const scripts = [...text.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
+      const scriptLines = scripts.reduce((sum, match) => sum + countLines(match[1]), 0);
       if (lines > MAX_FILE_LINES || scriptLines > MAX_SCRIPT_LINES) {
         violations.push({ file: relative, total: lines, script: scriptLines });
       }
