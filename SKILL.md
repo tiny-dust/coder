@@ -114,6 +114,8 @@ node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --check
 
 输出超过规模限制的文件清单及行数；`.vue` 同时给出 script 区行数。有超限时先拆分再收工。
 
+`--check` 同时扫描枚举违规：`enum` 声明与 `as const` 对象枚举都会被报告并要求替换为 rattail 的 `enumOf`（扫描已排除注释和字符串，不会误报文档/文案中的 "enum" 字样）。
+
 ## 子技能路由
 
 - 新建项目、脚手架和基础依赖选型：`$skill: vue3-project-init`

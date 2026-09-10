@@ -14,7 +14,7 @@ const FUNCTION_DIRS = new Set(['utils', 'util', 'lib', 'libs', 'helpers', 'helpe
 const SQLITE_THRESHOLD_ENTRIES = 300; // at 300+ entries the index switches from JSON to SQLite
 
 function usage() {
-  console.log(`Usage: node query.js [options] <name>\n\nOptions:\n  --root <dir>       Project root (default: current directory)\n  --init             Detect stack (framework/version/language) and write .coder/profile.json\n  --refresh          Incrementally rebuild the local index\n  --check            Verify file size limits (.vue ≤ 500, script ≤ 300, others ≤ 500 lines)\n  --json             Print machine-readable JSON\n  --no-snippet       Text output only: skip source snippets\n  --lines <n>        Snippet length in lines (default 30)\n  --kind <kind>      component, function, or all (default: all)\n  --db               Force SQLite index mode (auto when > ${SQLITE_THRESHOLD_ENTRIES} entries)\n  --no-db            Force JSON index mode\n  --help             Show this help`);
+  console.log(`Usage: node query.js [options] <name>\n\nOptions:\n  --root <dir>       Project root (default: current directory)\n  --init             Detect stack (framework/version/language) and write .coder/profile.json\n  --refresh          Incrementally rebuild the local index\n  --check            Verify size limits and enum rules (.vue ≤ 500, script ≤ 300, others ≤ 500; no enum/as-const enums)\n  --json             Print machine-readable JSON\n  --no-snippet       Text output only: skip source snippets\n  --lines <n>        Snippet length in lines (default 30)\n  --kind <kind>      component, function, or all (default: all)\n  --db               Force SQLite index mode (auto when > ${SQLITE_THRESHOLD_ENTRIES} entries)\n  --no-db            Force JSON index mode\n  --help             Show this help`);
 }
 
 function parseArgs(argv) {
@@ -539,13 +539,68 @@ function runQuery(opts, root, index) {
 const MAX_FILE_LINES = 500;
 const MAX_SCRIPT_LINES = 300;
 
+// Strip comments and string/template literals so keyword scans don't match prose.
+function stripCommentsAndStrings(text) {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < text.length && text[i] !== '\n') i += 1;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) {
+        if (text[i] === '\n') out += '\n';
+        i += 1;
+      }
+      i += 2;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const quote = ch;
+      i += 1;
+      while (i < text.length && text[i] !== quote) {
+        if (text[i] === '\\') i += 1;
+        if (text[i] === '\n') out += '\n';
+        i += 1;
+      }
+      i += 1;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+function findEnumViolations(text) {
+  const code = stripCommentsAndStrings(text);
+  const findings = [];
+  // enum declarations: enum Foo / const enum Foo
+  for (const match of code.matchAll(/\b(?:const\s+)?enum\s+([A-Za-z_$][\w$]*)/g)) {
+    findings.push({ kind: 'enum', name: match[1] });
+  }
+  // as const enum simulation: `export const X = { ... } as const` (name uppercase-ish object literal).
+  for (const match of code.matchAll(/(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*\{[\s\S]*?\}\s+as\s+const/g)) {
+    findings.push({ kind: 'as-const', name: match[1] });
+  }
+  return findings;
+}
+
 function runCheck(opts, root) {
   const files = walk(root, [], CHECK_EXTENSIONS);
   const violations = [];
+  const enumHits = [];
   for (const file of files) {
     const text = fs.readFileSync(file, 'utf8');
     const lines = countLines(text);
     const relative = path.relative(root, file);
+    for (const finding of findEnumViolations(text)) {
+      enumHits.push({ file: relative, ...finding });
+    }
     if (path.extname(file) === '.vue') {
       const scripts = [...text.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
       const scriptLines = scripts.reduce((sum, match) => sum + countLines(match[1]), 0);
@@ -556,16 +611,20 @@ function runCheck(opts, root) {
       violations.push({ file: relative, total: lines, script: null });
     }
   }
-  if (opts.json) return console.log(JSON.stringify({ ok: violations.length === 0, limits: { maxFileLines: MAX_FILE_LINES, maxScriptLines: MAX_SCRIPT_LINES }, violations }, null, 2));
-  if (!violations.length) {
-    console.log(`OK: all files within limits (file ≤ ${MAX_FILE_LINES} lines, .vue script ≤ ${MAX_SCRIPT_LINES} lines).`);
-    return;
-  }
+  if (opts.json) return console.log(JSON.stringify({ ok: violations.length === 0 && enumHits.length === 0, limits: { maxFileLines: MAX_FILE_LINES, maxScriptLines: MAX_SCRIPT_LINES }, sizeViolations: violations, enumViolations: enumHits }, null, 2));
   for (const v of violations) {
     console.log(`OVER LIMIT: ${v.file} — total ${v.total}${v.script !== null ? `, script ${v.script}` : ''} lines`);
   }
-  console.log(`\n${violations.length} file(s) exceed limits. Split before finishing: 1) extract subcomponents 2) extract pure functions to utils 3) composable last.`);
-  process.exitCode = 1;
+  for (const hit of enumHits) {
+    console.log(`ENUM VIOLATION: ${hit.file} — ${hit.kind === 'enum' ? '`enum` declaration' : '`as const` object enum'} "${hit.name}". Use enumOf from rattail instead.`);
+  }
+  if (violations.length || enumHits.length) {
+    if (violations.length) console.log(`\n${violations.length} file(s) exceed size limits. Split before finishing: 1) extract subcomponents 2) extract pure functions to utils 3) composable last.`);
+    if (enumHits.length) console.log(`\n${enumHits.length} enum violation(s). Replace with enumOf from rattail (see $skill: rattail → references/enumOf.md).`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`OK: all files within limits (file ≤ ${MAX_FILE_LINES} lines, .vue script ≤ ${MAX_SCRIPT_LINES} lines), no enum/as-const declarations.`);
 }
 
 function main() {
