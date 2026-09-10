@@ -129,11 +129,23 @@ node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --check
 
 只在任务确实需要时加载子技能，避免重复加载规则。
 
+## 依赖清理（整合自旧 vue3-deps，Vue/TS 项目适用）
+
+- **未引用的文件/导出/依赖一律删除**，但先过自动导入例外：`auto-imports.d.ts`（unplugin-auto-import）、`components.d.ts`（unplugin-vue-components）、`typed-router.d.ts`（vue-router 5 文件路由）中声明的符号视为"可能在使用"，不得当垃圾删除；删除前先 grep 业务源码确认无实际调用。
+- 删除文件/函数 → 同步删除其 import；删依赖 → `npm/pnpm uninstall` 前先全局 grep。
+- 清理后必须重跑 build/dev，确认无 `Cannot find name`、`Failed to resolve import`、组件未注册报错；报错说明符号仍被使用，恢复。
+- 全部源码中无显式 import ≠ 未使用——ESM 副作用导入、模板中的组件自动注册都不走 import 语句。
+
+## 项目初始化要点（整合自旧 vue3-project-init）
+
+- **vue-router 5 文件路由**（推荐）：`vite.config.ts` 中 `VueRouter()` 必须放在 `vue()` 之前；`main.ts` 用 `import { routes } from 'vue-router/auto-routes'`；页面放 `src/pages/`（`index.vue`→`/`，`[id].vue`→`:id`，`[...all].vue`→404，`(group)/` 分组不改 URL）。首次 dev/build 生成 `typed-router.d.ts` 要提交进仓库，并加入 `tsconfig.app.json` 的 `include`。**禁止 unplugin-vue-router**（已归档，与 vue-router 5 原生不兼容）。
+- **pinia**：最新版 + `pinia-plugin-persistedstate` 持久化需问询用户；store 只存跨组件共享数据（用户信息/系统设置/权限），单页面一次性状态留在组件内。
+- **最小化安装**：只装确认选型的库，不擅自加 ESLint/测试/CI 等需求外配置。
+
 ## 共享资源
 
 - `scripts/query.js`：栈检测（--init）、增量索引 v3（行号定位/导入清单/computed/源码片段，JSON/SQLite 自动切换）、按名称查询、规模检查（--check）
 - `.coder/profile.json`：项目栈档案（--init 生成，首次引导的依据）
 - `references/sfc-structure.md`：Vue SFC 结构与 computed 可读性规范
 - `references/error-handling.md`：错误处理规范
-- `references/doc-formats.md`：旧 `.docs` 结构的兼容参考，仅在维护已有项目文档时使用
 - `references/<language>.md`：其他语言的沉淀规范（如 `python.md`、`go.md`），按「范式积累机制」生成，存在哪个读哪个

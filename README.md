@@ -73,8 +73,7 @@ node scripts/query.js --root /path/to/project --db --refresh   # 强制 SQLite �
 
 ## 目录
 
-- `SKILL.md`：调度规则
+- `SKILL.md`：调度规则（含依赖清理与项目初始化要点）
 - `scripts/query.js`：索引与查询 CLI
 - `references/sfc-structure.md`：Vue SFC 规范
 - `references/error-handling.md`：错误处理规范
-- `references/doc-formats.md`：已有项目 `.docs` 的兼容参考
