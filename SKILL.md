@@ -1,6 +1,6 @@
 ---
 name: coder
-description: 一切开发任务的总入口——只要任务涉及编写、修改、审查、调试或重构代码（不限语言和文件类型），必须先加载本技能。开始处理代码前，先确认项目根目录与 .coder 状态：已有索引时运行 scripts/query.js 查询；无索引时按首次引导选择建库或跳过。当前深度规范内置 Vue 3 与 TypeScript（.vue 使用 SFC 结构规范；.ts 复用相同的先查后写、类型优先、最小改动流程），其他语言按通用开发流程处理，并通过范式积累机制 references/<language>.md 随开发经验持续沉淀新语言/框架的最佳实践。TS/Vue 硬性规则：工具函数优先用 rattail（不确定时加载 $skill: rattail 查 references）；禁止 enum 声明和 as const 模拟枚举，统一用 rattail 的 enumOf；vue-i18n 字典只用 JSON 维护并保证 i18n Ally 等编辑器插件可扫描。铁律（每次任务必须遵守，优先级最高）：禁止过度设计与过度开发，永远用最简方式实现当前需求；发现逻辑 bug 时先完成当前开发，再与用户确认是否修复。首次在项目中使用时先询问建库范围（全量扫库 / 只建当前需求相关 / 本次跳过）。索引超过 300 条自动启用 SQLite 模式。Vue 复杂场景再分派到 vue3-project-init、vue3-dev 或 vue3-deps。
+description: "一切开发任务的总入口——只要任务涉及编写、修改、审查、调试或重构代码（不限语言和文件类型），必须先加载本技能。开始处理代码前，先确认项目根目录与 .coder 状态——已有索引时运行 scripts/query.js 查询；无索引时按首次引导选择建库或跳过。当前深度规范内置 Vue 3 与 TypeScript（.vue 使用 SFC 结构规范；.ts 复用相同的先查后写、类型优先、最小改动流程），其他语言按通用开发流程处理，并通过范式积累机制 references/<language>.md 随开发经验持续沉淀新语言/框架的最佳实践。TS/Vue 硬性规则——工具函数优先用 rattail（不确定时加载 rattail 技能查 references）；禁止 enum 声明和 as const 模拟枚举，统一用 rattail 的 enumOf；vue-i18n 字典只用 JSON 维护并保证 i18n Ally 等编辑器插件可扫描。铁律（每次任务必须遵守，优先级最高）——禁止过度设计与过度开发，永远用最简方式实现当前需求；发现逻辑 bug 时先完成当前开发，再与用户确认是否修复。首次在项目中使用时先询问建库范围（全量扫库 / 只建当前需求相关 / 本次跳过）。索引超过 300 条自动启用 SQLite 模式。Vue 复杂场景再分派到 vue3-project-init、vue3-dev 或 vue3-deps。"
 ---
 
 # Coder
