@@ -4,7 +4,10 @@
 
 | id | 主题文件 | 标题 | 状态 |
 | --- | --- | --- | --- |
-| — | — | （暂无） | — |
+| ts-001 | typescript.md | 导出函数用 function 声明 | active |
+| ts-002 | typescript.md | API 文件后缀 .api.ts | active |
+| vue-001 | vue3.md | 页面组件带 Page 前缀 | active |
+| vue-002 | vue3.md | Pinia store 用 setup 风格单文件 | active |
 
 ## 用法
 

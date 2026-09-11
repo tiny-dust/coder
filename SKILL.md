@@ -1,6 +1,6 @@
 ---
 name: coder
-description: "一切开发任务的总入口——只要任务涉及编写、修改、审查、调试或重构代码（不限语言和文件类型），必须先加载本技能。开始处理代码前，先确认项目根目录与 .coder 状态——已有索引时运行 scripts/query.js 查询；无索引时按首次引导选择建库或跳过。四条一级铁律贯穿始终：禁止额外编程、不要预想未来、代码整齐、中低级可读。规范分层：references/baseline/ 为官方默认（按主题拆分 typescript/vue3/sfc/enum/rattail/error-handling/readability/tooling），references/user/ 为随使用积累的个人习惯（user 覆盖 baseline 同主题冲突）。积累触发：用户纠偏即问、收工汇总候选、以及对过往项目/优秀仓库做系统归纳（Induce）。当前深度规范内置 Vue 3 与 TypeScript；其他语言走通用工作流并可沉淀到 user/<language>.md。TS/Vue 硬性：工具函数优先 rattail；禁止 enum 与 as const 枚举，统一 enumOf；vue-i18n 字典只用 JSON。首次在项目中使用时先询问建库范围（全量/仅相关/跳过）。索引超过 300 条自动 SQLite。Vue 复杂场景可分派 vue3-project-init、vue3-dev 或 vue3-deps。"
+description: "一切开发任务的总入口——只要任务涉及编写、修改、审查、调试或重构代码（不限语言和文件类型），必须先加载本技能。开始处理代码前，先确认项目根目录与 .coder 状态——已有索引时运行 scripts/query.js 查询；无索引时按首次引导选择建库或跳过。四条一级铁律贯穿始终：禁止额外编程、不要预想未来、代码整齐、中低级可读。规范分层：references/baseline/ 为官方默认（按主题拆分 typescript/vue3/sfc/enum/rattail/error-handling/readability/tooling/deps），references/user/ 为随使用积累的个人习惯（user 覆盖 baseline 同主题冲突）。积累触发：用户纠偏即问、收工汇总候选、以及对过往项目/优秀仓库/GitHub 在线地址做系统归纳（Induce，浅克隆只读后删）。依赖审计：--deps 读 package.json，--deps --latest 对比 registry 并分类 major/minor/patch，经用户确认才升级。当前深度规范内置 Vue 3 与 TypeScript；其他语言走通用工作流并可沉淀到 user/<language>.md。TS/Vue 硬性：工具函数优先 rattail；禁止 enum 与 as const 枚举，统一 enumOf；vue-i18n 字典只用 JSON。首次在项目中使用时先询问建库范围（全量/仅相关/跳过）。索引超过 300 条自动 SQLite。Vue 复杂场景可分派 vue3-project-init、vue3-dev 或 vue3-deps。"
 ---
 
 # Coder
@@ -34,8 +34,11 @@ description: "一切开发任务的总入口——只要任务涉及编写、修
 | 枚举 enumOf | `references/baseline/enum.md` | `references/user/enum.md` |
 | rattail 工具链 | `references/baseline/rattail.md` | `references/user/rattail.md` |
 | 错误处理 | `references/baseline/error-handling.md` | `references/user/error-handling.md` |
+| ROS 集成 | — | `references/user/ros.md` |
+| 数据持久化 | — | `references/user/data.md` |
 | 整齐与可读 | `references/baseline/readability.md` | `references/user/readability.md` |
 | 查询/索引/--check | `references/baseline/tooling.md` | `references/user/tooling.md` |
+| 依赖版本审计/升级推荐 | `references/baseline/deps.md` | `references/user/deps.md` |
 | 习惯索引 | — | `references/user/preferences.md` |
 
 规则：任务涉及哪些主题就加载哪些文件；user 文件**不存在则跳过**，不预建。同一文件后缀混用时叠加载规则，不拆成矛盾流程。
@@ -67,6 +70,7 @@ node <SKILL_DIR>/scripts/query.js --root <项目根目录> --refresh
 8. 运行项目类型检查、测试、构建；必要时 dev 实测。
 9. 变更后 `--refresh`；收工前 `--check` 非零不得收工。
 10. **收工前习惯汇总**：见「习惯积累」。
+11. **依赖升级（仅用户要求时）**：`--deps` / `--deps --latest` 审计，major 先读变更；经用户确认才改版本。见 `deps.md`。
 
 ## 习惯积累（随使用成长）
 
@@ -82,13 +86,22 @@ node <SKILL_DIR>/scripts/query.js --root <项目根目录> --refresh
 
 ### 触发 C —— 仓库归纳（Induce）
 
-用户要求归纳过往项目或优秀参考仓库时：
+用户要求归纳过往项目或优秀参考仓库时，目标可以是**本地路径**或**在线 GitHub 地址**：
 
-1. 确认路径与性质（自己的历史项目 → 偏好；外部优秀仓库 → 参考）。
-2. 系统阅读：目录结构 → 代表性模块（入口/组件/工具/API/测试）→ 抽样对照；**禁止无目标全库乱读**。
-3. 提炼候选条目（模板同上，`来源` 写 `YYYY-MM-DD 仓库归纳:<path>`）。
-4. `question` 多选确认后写入 user 层；未勾选不落盘。
-5. 与铁律冲突的不收录；只记「下次会重犯或重查」的内容。
+1. 确认目标与性质（本地历史项目 → 偏好；外部优秀仓库/GitHub → 参考）。支持 `https://github.com/<owner>/<repo>`（可带 `@branch` 或 `/tree/<branch>/<path>`）。
+2. **在线地址获取（只读）**：浅克隆到临时目录后阅读，用完即删，不改原仓库：
+
+```bash
+git clone --depth 1 [--branch <branch>] <github-url> /tmp/coder-induce-<repo>
+# 可选：在克隆目录建索引辅助定位
+node <SKILL_DIR>/scripts/query.js --root /tmp/coder-induce-<repo> --init
+node <SKILL_DIR>/scripts/query.js --root /tmp/coder-induce-<repo> --refresh
+```
+
+3. 系统阅读：目录结构 → 代表性模块（入口/组件/工具/API/测试）→ 抽样对照；**禁止无目标全库乱读**。
+4. 提炼候选条目（模板同上，`来源` 写 `YYYY-MM-DD 仓库归纳:<本地路径或 GitHub URL>`）。
+5. `question` 多选确认后写入 user 层；未勾选不落盘。清理临时克隆目录。
+6. 与铁律冲突的不收录；只记「下次会重犯或重查」的内容。
 
 归纳结果**只进 user/**，不直接改 baseline。
 
@@ -119,7 +132,7 @@ node <SKILL_DIR>/scripts/query.js --root <项目根目录> --check
 
 ## 共享资源
 
-- `scripts/query.js`：栈检测（--init）、索引 v3、查询、--check
+- `scripts/query.js`：栈检测（--init）、索引 v3、查询、--check、依赖列表（--deps/--latest）
 - `.coder/profile.json`：项目栈档案
 - `references/baseline/*`：官方默认规范（按主题）
 - `references/user/*`：个人习惯与索引

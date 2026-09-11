@@ -37,6 +37,10 @@ node <SKILL_DIR>/scripts/query.js --root <项目根目录> --check
 - 检查文件规模（`.vue` ≤500、script 合计 ≤300、其他 ≤500）与 enum/as-const 违规。
 - 非零退出不得收工；第三方生成代码受约束时说明原因并与用户确认。
 
+## 依赖版本（按需，非每次任务）
+
+用户要求审计/升级依赖时：先 `--deps` 读声明版本，再 `--deps --latest` 对比 registry，major 先读变更再推荐。完整协议见 `deps.md`。**不自动改版本、不自动 install。**
+
 ## 验证
 
 - 运行项目已有的类型检查、测试、构建；至少覆盖受影响路径。

@@ -14,17 +14,19 @@ const FUNCTION_DIRS = new Set(['utils', 'util', 'lib', 'libs', 'helpers', 'helpe
 const SQLITE_THRESHOLD_ENTRIES = 300; // at 300+ entries the index switches from JSON to SQLite
 
 function usage() {
-  console.log(`Usage: node query.js [options] <name>\n\nOptions:\n  --root <dir>       Project root (default: current directory)\n  --init             Detect stack (framework/version/language) and write .coder/profile.json\n  --refresh          Incrementally rebuild the local index\n  --check            Verify size limits and enum rules (.vue ≤ 500, script ≤ 300, others ≤ 500; no enum/as-const enums)\n  --json             Print machine-readable JSON\n  --no-snippet       Text output only: skip source snippets\n  --lines <n>        Snippet length in lines (default 30)\n  --kind <kind>      component, function, or all (default: all)\n  --db               Force SQLite index mode (auto when > ${SQLITE_THRESHOLD_ENTRIES} entries)\n  --no-db            Force JSON index mode\n  --help             Show this help`);
+  console.log(`Usage: node query.js [options] <name>\n\nOptions:\n  --root <dir>       Project root (default: current directory)\n  --init             Detect stack (framework/version/language) and write .coder/profile.json\n  --refresh          Incrementally rebuild the local index\n  --check            Verify size limits and enum rules (.vue ≤ 500, script ≤ 300, others ≤ 500; no enum/as-const enums)\n  --deps             List package.json dependencies (with --latest, compare to registry via package manager)\n  --latest           With --deps: run npm/pnpm/yarn outdated and classify patch/minor/major\n  --json             Print machine-readable JSON\n  --no-snippet       Text output only: skip source snippets\n  --lines <n>        Snippet length in lines (default 30)\n  --kind <kind>      component, function, or all (default: all)\n  --db               Force SQLite index mode (auto when > ${SQLITE_THRESHOLD_ENTRIES} entries)\n  --no-db            Force JSON index mode\n  --help             Show this help`);
 }
 
 function parseArgs(argv) {
-  const opts = { root: process.cwd(), refresh: false, json: false, kind: 'all', name: '', init: false, check: false, db: null };
+  const opts = { root: process.cwd(), refresh: false, json: false, kind: 'all', name: '', init: false, check: false, db: null, deps: false, latest: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--help' || arg === '-h') opts.help = true;
     else if (arg === '--init') opts.init = true;
     else if (arg === '--refresh') opts.refresh = true;
   else if (arg === '--check') opts.check = true;
+  else if (arg === '--deps') opts.deps = true;
+  else if (arg === '--latest') opts.latest = true;
   else if (arg === '--no-snippet') opts.noSnippet = true;
   else if (arg === '--lines') opts.lines = argv[++i];
     else if (arg === '--json') opts.json = true;
@@ -627,12 +629,177 @@ function runCheck(opts, root) {
   console.log(`OK: all files within limits (file ≤ ${MAX_FILE_LINES} lines, .vue script ≤ ${MAX_SCRIPT_LINES} lines), no enum/as-const declarations.`);
 }
 
+// ---------- Dependency audit (--deps) ----------
+
+function detectPackageManager(root) {
+  if (fs.existsSync(path.join(root, 'pnpm-lock.yaml'))) return 'pnpm';
+  if (fs.existsSync(path.join(root, 'yarn.lock'))) return 'yarn';
+  return 'npm';
+}
+
+function cleanVersion(value) {
+  if (typeof value !== 'string') return null;
+  const m = value.trim().match(/(\d+)\.(\d+)\.(\d+)/);
+  return m ? `${m[1]}.${m[2]}.${m[3]}` : null;
+}
+
+function classifyBump(current, latest) {
+  const a = cleanVersion(current);
+  const b = cleanVersion(latest);
+  if (!a || !b) return 'unknown';
+  if (a === b) return 'none';
+  const [a0, a1, a2] = a.split('.').map(Number);
+  const [b0, b1, b2] = b.split('.').map(Number);
+  if (a0 !== b0) return 'major';
+  if (a1 !== b1) return 'minor';
+  if (a2 !== b2) return 'patch';
+  return 'unknown';
+}
+
+function collectDeclaredDeps(root) {
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const { catalog } = loadPnpmCatalog(root);
+  const rows = [];
+  const add = (type, map) => {
+    for (const [name, range] of Object.entries(map || {})) {
+      const catalogVersion = range === 'catalog:' ? catalog[name] || null : null;
+      rows.push({ name, type, range, catalogVersion });
+    }
+  };
+  add('dependencies', pkg.dependencies);
+  add('devDependencies', pkg.devDependencies);
+  rows.sort((a, b) => a.name.localeCompare(b.name) || a.type.localeCompare(b.type));
+  return { projectName: pkg.name || path.basename(root), packageManager: detectPackageManager(root), rows };
+}
+
+function runPackageManagerOutdated(root) {
+  const { execFileSync } = require('node:child_process');
+  const pm = detectPackageManager(root);
+  const args = pm === 'yarn' ? ['outdated', '--json'] : ['outdated', '--json'];
+  try {
+    const out = execFileSync(pm, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 20 * 1024 * 1024 });
+    return parseOutdatedOutput(pm, out);
+  } catch (error) {
+    // npm/pnpm outdated exit 1 when something is outdated; JSON still on stdout.
+    const out = (error.stdout || '').toString();
+    if (out.trim()) {
+      try {
+        return parseOutdatedOutput(pm, out);
+      } catch {
+        throw new Error(`Failed to parse ${pm} outdated JSON: ${error.message}`);
+      }
+    }
+    throw new Error(`Failed to run ${pm} outdated: ${error.message}`);
+  }
+}
+
+function parseOutdatedOutput(pm, out) {
+  const text = (out || '').trim();
+  if (!text) return {};
+  // yarn may wrap lines; take the last JSON object-looking chunk.
+  let payload = text;
+  if (pm === 'yarn') {
+    const lines = text.split('\n').filter((l) => l.trim().startsWith('{') || l.trim().startsWith('"'));
+    payload = lines.length ? `{\n${lines.filter((l) => l.includes(':')).join('\n')}\n}` : text;
+  }
+  const data = JSON.parse(payload);
+  // npm/pnpm: { name: { current, wanted, latest, location, dependent } }
+  // yarn classic --json may be different; normalize common shape only.
+  const map = {};
+  for (const [name, info] of Object.entries(data || {})) {
+    if (!info || typeof info !== 'object') continue;
+    map[name] = {
+      current: cleanVersion(info.current) || info.current || null,
+      wanted: cleanVersion(info.wanted) || info.wanted || null,
+      latest: cleanVersion(info.latest) || info.latest || null,
+    };
+  }
+  return map;
+}
+
+function runDeps(opts, root) {
+  const declared = collectDeclaredDeps(root);
+  let outdated = null;
+  let outdatedError = null;
+  if (opts.latest) {
+    try {
+      outdated = runPackageManagerOutdated(root);
+    } catch (error) {
+      outdatedError = error.message;
+    }
+  }
+  const packages = new Map();
+  for (const row of declared.rows) {
+    const entry = packages.get(row.name) || {
+      name: row.name,
+      types: [],
+      range: row.range,
+      catalogVersion: row.catalogVersion,
+      current: null,
+      wanted: null,
+      latest: null,
+      bump: null,
+    };
+    entry.types.push(row.type);
+    // Prefer non-catalog range for display; keep first non-empty range.
+    if (entry.range === 'catalog:' && row.range !== 'catalog:') entry.range = row.range;
+    packages.set(row.name, entry);
+  }
+  if (outdated) {
+    for (const [name, info] of Object.entries(outdated)) {
+      const entry = packages.get(name);
+      if (!entry) continue;
+      entry.current = info.current;
+      entry.wanted = info.wanted;
+      entry.latest = info.latest;
+      entry.bump = classifyBump(info.current || entry.catalogVersion || entry.range, info.latest);
+    }
+  }
+  const list = [...packages.values()];
+  const summary = {
+    total: list.length,
+    outdated: list.filter((p) => p.bump && p.bump !== 'none').length,
+    major: list.filter((p) => p.bump === 'major').length,
+    minor: list.filter((p) => p.bump === 'minor').length,
+    patch: list.filter((p) => p.bump === 'patch').length,
+  };
+  const result = {
+    project: declared.projectName,
+    packageManager: declared.packageManager,
+    checkedLatest: Boolean(outdated),
+    outdatedError,
+    summary,
+    packages: list,
+  };
+  if (opts.json) return console.log(JSON.stringify(result, null, 2));
+  console.log(`Project: ${result.project} (${result.packageManager})`);
+  if (!opts.latest) {
+    console.log(`Declared packages: ${list.length} (run with --latest to compare registry)`);
+    for (const p of list) {
+      const ver = p.catalogVersion || p.range;
+      console.log(`- ${p.name}@${ver} [${p.types.join(', ')}]`);
+    }
+    return;
+  }
+  if (outdatedError) console.log(`Latest check failed: ${outdatedError}`);
+  console.log(`Outdated: ${summary.outdated} (major ${summary.major}, minor ${summary.minor}, patch ${summary.patch}) / total ${summary.total}`);
+  const order = { major: 0, minor: 1, patch: 2, unknown: 3, none: 4 };
+  const sorted = [...list].sort((a, b) => (order[a.bump] ?? 9) - (order[b.bump] ?? 9) || a.name.localeCompare(b.name));
+  for (const p of sorted) {
+    if (!p.bump || p.bump === 'none') continue;
+    const cur = p.current || p.catalogVersion || p.range;
+    console.log(`- [${p.bump}] ${p.name}: ${cur} → latest ${p.latest}${p.wanted && p.wanted !== p.latest ? ` (wanted ${p.wanted})` : ''}`);
+  }
+  if (!summary.outdated) console.log('All compared packages are up to date.');
+}
+
 function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help) return usage();
   const root = projectRoot(opts.root);
 
   if (opts.check) return runCheck(opts, root);
+  if (opts.deps) return runDeps(opts, root);
 
   if (opts.init) {
     const profile = detectStack(root);

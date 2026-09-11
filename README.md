@@ -116,6 +116,7 @@ coder/
 | 错误处理 | `references/baseline/error-handling.md` | `references/user/error-handling.md` |
 | 整齐与可读 | `references/baseline/readability.md` | `references/user/readability.md` |
 | 查询 / 索引 / --check | `references/baseline/tooling.md` | `references/user/tooling.md` |
+| 依赖版本审计 / 升级推荐 | `references/baseline/deps.md` | `references/user/deps.md` |
 
 任务涉及哪些主题就加载哪些文件；同一任务混改 `.vue` 与 `.ts` 时叠加载规则，不拆成矛盾流程。
 
@@ -176,6 +177,8 @@ node <SKILL_DIR>/scripts/query.js --root <项目根> --kind component BaseButton
 node <SKILL_DIR>/scripts/query.js --root <项目根> --kind function formatDate --json
 node <SKILL_DIR>/scripts/query.js --root <项目根> --check
 node <SKILL_DIR>/scripts/query.js --root <项目根> --check --json
+node <SKILL_DIR>/scripts/query.js --root <项目根> --deps              # 列出声明依赖
+node <SKILL_DIR>/scripts/query.js --root <项目根> --deps --latest     # 对比最新并分类 major/minor/patch
 node <SKILL_DIR>/scripts/query.js --root <项目根> --db --refresh    # 强制 SQLite
 node <SKILL_DIR>/scripts/query.js --root <项目根> --no-db --refresh # 强制 JSON
 ```
@@ -188,6 +191,8 @@ node <SKILL_DIR>/scripts/query.js --root <项目根> --no-db --refresh # 强制 
 | `--init` | 栈检测，写入 `.coder/profile.json` |
 | `--refresh` | 增量重建索引（mtime + size 未变则复用） |
 | `--check` | 文件规模 + enum/as-const 违规；有违规退出码 1 |
+| `--deps` | 列出 package.json 依赖（支持 pnpm catalog） |
+| `--latest` | 与 `--deps` 连用：调用包管理器 outdated，分类 major/minor/patch |
 | `--json` | 机器可读输出 |
 | `--kind component\|function\|all` | 过滤类型 |
 | `--no-snippet` | 不打印源码片段 |
@@ -226,6 +231,28 @@ node <SKILL_DIR>/scripts/query.js --root <项目根> --no-db --refresh # 强制 
 行数按物理行计（空行与注释计入；文件末尾换行不额外产生一行）。扫描已排除注释与字符串，不会误报文案中的 “enum”。
 
 超限时默认拆分优先级：① 独立 UI 区块拆子组件 → ② 无状态纯逻辑抽 utils → ③ 最后才 composable（状态耦合且 2+ 消费者）。顺序是默认优先级，不是机械强制；拆分必须有当前需求依据。
+
+### 依赖版本审计（`--deps`）
+
+只在**你要求**升级/检查依赖时使用，不自动改版本。
+
+```bash
+# 1) 读声明版本（本地）
+node <SKILL_DIR>/scripts/query.js --root <项目根> --deps
+
+# 2) 对比最新（内部 npm/pnpm/yarn outdated --json）
+node <SKILL_DIR>/scripts/query.js --root <项目根> --deps --latest
+```
+
+输出按 `major / minor / patch / none` 分类。推荐规则：
+
+| 级别 | 默认建议 |
+| --- | --- |
+| patch | 可升 |
+| minor | 可升；核心框架建议升级后跑验证 |
+| major | **单独评估**：先读 CHANGELOG/Releases，再向用户说明风险 |
+
+完整协议见 [`deps.md`](references/baseline/deps.md)。确认前禁止改 `package.json` / lockfile。
 
 ---
 
@@ -347,16 +374,34 @@ TS/Vue 需要工具函数时 **先查 rattail**（数组/对象/字符串/数学
 
 ## 仓库归纳（Induce）
 
-对**过往项目**或**优秀参考仓库**做系统阅读，把可复用规范沉淀进 `user/` 层。
+对**过往项目**或**优秀参考仓库**做系统阅读，把可复用规范沉淀进 `user/` 层。目标可以是**本地路径**，也可以是**在线 GitHub 地址**。
+
+### 支持的目标
+
+| 类型 | 示例 |
+| --- | --- |
+| 本地路径 | `~/projects/legacy-admin` |
+| GitHub 仓库 | `https://github.com/vuejs/core` |
+| 指定分支/子目录 | `https://github.com/owner/repo@main` 或 `.../tree/main/packages/foo` |
 
 ### 流程
 
-1. 确认目标路径与性质（自己的历史项目 → 偏好；外部优秀仓库 → 参考）。
-2. **系统阅读**：目录结构 → 代表性模块（入口 / 组件 / 工具 / API / 测试）→ 抽样对照。  
+1. 确认目标与性质（自己的历史项目 → 偏好；外部优秀仓库 / GitHub → 参考）。
+2. **在线地址**：浅克隆到临时目录，只读分析，用完删除（不改远端、不把克隆留在项目内）：
+
+```bash
+git clone --depth 1 [--branch <branch>] <github-url> /tmp/coder-induce-<repo>
+
+# 可选：在克隆目录建索引，便于按组件/函数定位
+node <SKILL_DIR>/scripts/query.js --root /tmp/coder-induce-<repo> --init
+node <SKILL_DIR>/scripts/query.js --root /tmp/coder-induce-<repo> --refresh
+```
+
+3. **系统阅读**：目录结构 → 代表性模块（入口 / 组件 / 工具 / API / 测试）→ 抽样对照。  
    **禁止无目标全库乱读。**
-3. 提炼候选条目（模板同上，`来源` 写 `YYYY-MM-DD 仓库归纳:<path>`）。
-4. 用多选让你勾选；未勾选不写盘。
-5. 与铁律冲突的不收录；只记「下次会重犯或重查」的内容。
+4. 提炼候选条目（`来源` 写 `YYYY-MM-DD 仓库归纳:<本地路径或 GitHub URL>`）。
+5. 用多选让你勾选；未勾选不写盘。
+6. 与铁律冲突的不收录；只记「下次会重犯或重查」的内容。
 
 归纳结果**只进 `user/`**，不直接改 `baseline/`（避免被任意仓库污染官方默认）。
 
@@ -364,7 +409,8 @@ TS/Vue 需要工具函数时 **先查 rattail**（数组/对象/字符串/数学
 
 - 「用 coder 归纳一下这个仓库的规范」
 - 「读一下 `~/projects/legacy-admin`，把它的编码习惯沉淀到 user 层」
-- 「从这个开源仓库提炼 Vue3 组件写法约定」
+- 「从 `https://github.com/vuejs/core` 提炼 Vue3 组件写法约定」
+- 「学习这个 GitHub 仓库的 TS 工具函数组织方式：https://github.com/antfu/utils」
 
 ---
 
