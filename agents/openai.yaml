@@ -1,4 +1,4 @@
 interface:
   display_name: "Coder"
-  short_description: "按文件后缀路由的 Vue3 与 TypeScript 开发规范"
-  default_prompt: "请按 coder 规则开发当前 Vue 或 TypeScript 文件"
+  short_description: "可积累个人习惯的开发规范入口（Vue3/TS 深度 + 分主题 baseline/user）"
+  default_prompt: "请按 coder 规则开发当前代码；先查索引与 user/baseline 路由"

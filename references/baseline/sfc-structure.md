@@ -1,5 +1,7 @@
 # SFC 代码结构规范
 
+适用：Vue 3 `<script setup>` 文件。先读 `principles.md`；目录/hook/i18n 等项目级规则见 `vue3.md`。
+
 ## 目录
 
 1. 结构顺序总览
@@ -22,6 +24,28 @@
 | 5 | ref / reactive / computed | 响应式状态与计算属性声明 |
 | 6 | 函数区 | 普通函数、事件处理函数、defineExpose 的函数 |
 | 7 | watch / onMounted 区 | watch、watchEffect、生命周期钩子 |
+
+**`defineProps` / `defineEmits` / `defineExpose` 的位置**：编译宏按其性质归区——
+
+- `defineProps<...>()`（含 `withDefaults`）与 `defineEmits<...>()` 紧跟类型定义区之后、常量区之前（它们是组件对外接口声明，等价于类型层的输入/输出契约），并配 `const props =` / `const emit =` 接收。
+- `defineExpose({...})` 放函数区末尾。
+- 宏之间不要插入其他逻辑；`props`/`emit` 声明后不得再出现第二个 `defineProps/defineEmits`。
+
+反例：
+
+```ts
+const { t } = useI18n()        // ❌ hooks 调用插在 props 与 emits 之间
+defineProps<{...}>()
+defineEmits<{...}>()
+```
+
+正例：
+
+```ts
+defineProps<{...}>()
+defineEmits<{...}>()
+// …然后才是常量、hooks、状态
+```
 
 ## 2. 各区域规则
 
@@ -112,6 +136,13 @@ const formatDate = (value: Date): string => value.toISOString() // 无响应式�
 - 所有 `watch` / `watchEffect` / `onMounted` / `onUnmounted` 统一放在 script 最后。
 - 顺序：watch → watchEffect → onMounted → onBeforeUnmount → onUnmounted。
 - 禁止把 onMounted 写在状态声明旁边（区域混乱）。
+- watch 回调依赖的函数必须在函数区**先于**该 watch 定义（script setup 自上而下执行，箭头提升不适用于函数声明混排时的可读性要求）。
+
+### 2.8 区域自检（收工必查）
+
+- 从上到下区域编号必须单调不减：一旦出现「函数 → 状态 → 函数」「watch → 函数 → watch」交叉即为违规。
+- 同类声明聚簇：同一区域的声明之间不插入其他区域的代码；跨区域只允许区域注释分隔。
+- 例外：某个 ref 仅作为另一个 watch/computed 的声明参数且有强 TDZ 依赖时，允许在注释中说明后保持顺序，但不得把函数/watch 混进状态区。
 
 ## 3. 标准示例
 
@@ -125,11 +156,15 @@ import { formatDate } from '@/utils/format'
 import BaseInput from '@/components/base/BaseInput.vue'
 import BaseButton from '@/components/base/BaseButton.vue'
 
-// ── ② 类型定义 ──────────────────────────────
+// ── ② props / emits / 类型定义 ──────────────
 interface LoginForm {
   username: string
   password: string
 }
+
+const props = defineProps<{ redirectAfterLogin?: boolean }>()
+
+const emit = defineEmits<{ success: [token: string] }>()
 
 // ── ③ 常量定义 ──────────────────────────────
 const MAX_PASSWORD_LENGTH = 20

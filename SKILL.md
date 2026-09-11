@@ -1,152 +1,125 @@
 ---
 name: coder
-description: "一切开发任务的总入口——只要任务涉及编写、修改、审查、调试或重构代码（不限语言和文件类型），必须先加载本技能。开始处理代码前，先确认项目根目录与 .coder 状态——已有索引时运行 scripts/query.js 查询；无索引时按首次引导选择建库或跳过。当前深度规范内置 Vue 3 与 TypeScript（.vue 使用 SFC 结构规范；.ts 复用相同的先查后写、类型优先、最小改动流程），其他语言按通用开发流程处理，并通过范式积累机制 references/<language>.md 随开发经验持续沉淀新语言/框架的最佳实践。TS/Vue 硬性规则——工具函数优先用 rattail（不确定时加载 rattail 技能查 references）；禁止 enum 声明和 as const 模拟枚举，统一用 rattail 的 enumOf；vue-i18n 字典只用 JSON 维护并保证 i18n Ally 等编辑器插件可扫描。铁律（每次任务必须遵守，优先级最高）——禁止过度设计与过度开发，永远用最简方式实现当前需求；发现逻辑 bug 时先完成当前开发，再与用户确认是否修复。首次在项目中使用时先询问建库范围（全量扫库 / 只建当前需求相关 / 本次跳过）。索引超过 300 条自动启用 SQLite 模式。Vue 复杂场景再分派到 vue3-project-init、vue3-dev 或 vue3-deps。"
+description: "一切开发任务的总入口——只要任务涉及编写、修改、审查、调试或重构代码（不限语言和文件类型），必须先加载本技能。开始处理代码前，先确认项目根目录与 .coder 状态——已有索引时运行 scripts/query.js 查询；无索引时按首次引导选择建库或跳过。四条一级铁律贯穿始终：禁止额外编程、不要预想未来、代码整齐、中低级可读。规范分层：references/baseline/ 为官方默认（按主题拆分 typescript/vue3/sfc/enum/rattail/error-handling/readability/tooling），references/user/ 为随使用积累的个人习惯（user 覆盖 baseline 同主题冲突）。积累触发：用户纠偏即问、收工汇总候选、以及对过往项目/优秀仓库做系统归纳（Induce）。当前深度规范内置 Vue 3 与 TypeScript；其他语言走通用工作流并可沉淀到 user/<language>.md。TS/Vue 硬性：工具函数优先 rattail；禁止 enum 与 as const 枚举，统一 enumOf；vue-i18n 字典只用 JSON。首次在项目中使用时先询问建库范围（全量/仅相关/跳过）。索引超过 300 条自动 SQLite。Vue 复杂场景可分派 vue3-project-init、vue3-dev 或 vue3-deps。"
 ---
 
 # Coder
 
-## 适用范围（必须遵守）
+脚本路径中的 `<SKILL_DIR>` 指本技能实际安装目录（当前环境常见为 `~/.agents/skills/coder`；以加载本技能时的真实路径为准，不要假定唯一路径）。
 
-**只要任务是开发——编写、修改、审查、调试、重构任何代码——都必须先加载本技能**，不限语言与文件类型：
+## 适用范围
 
-- `.vue` / `.ts`：使用本技能内置的完整规则（后缀路由见下节）。
-- 其他语言/文件类型：本技能的工作流仍然生效（查询优先、铁律、最小实现、验证），但**不要套用 Vue 特定规则**（SFC 结构等），按该语言的项目惯例执行。
+**只要任务是开发——编写、修改、审查、调试、重构任何代码——都必须先加载本技能**，不限语言与文件类型。
 
-一句话：coder 是所有开发任务的第一入口，先加载它，再按后缀决定用哪套细节规则。
+- `.vue` / `.ts`：完整规则（见下方路由表）。
+- 其他语言：通用工作流（铁律、查询优先、最小实现、验证）仍生效；**不要套用 Vue 特定规则**；可沉淀到 `references/user/<language>.md`。
 
-## 铁律（优先级最高，每次任务必须遵守）
+## 铁律（优先级最高）
 
-**禁止过度设计与过度开发。永远用最简洁的方式实现当前需求**：不做需求外的抽象、配置项、策略模式；不为"未来可能"写代码；能一行就不写三行；新逻辑优先加入已有文件而非新建。发现逻辑 bug 时，先完成当前开发任务，然后**与用户确认是否修复**，不擅自扩大改动范围。
+1. **禁止额外编程** —— 只写当前需求可观察行为所需代码；删掉后需求仍成立的抽象/配置/分支一律不写。
+2. **不要预想未来** —— 不为「以后可能」预留接口、策略、配置；已有 2 个真实调用点才抽取共享层。
+3. **代码整齐** —— 分区顺序稳定、命名一致、同类逻辑同形。
+4. **中低级可读** —— 平铺直叙的具名步骤；新人 3 分钟能顺着读完一条路径。
+
+判定标准与反例：`references/baseline/principles.md`。发现逻辑 bug 时先完成当前开发，再与用户确认是否修复，不擅自扩大范围。
+
+## 规范分层与主题路由
+
+| 主题 | baseline | user（有则先读并覆盖同主题） |
+| --- | --- | --- |
+| 铁律口径 | `references/baseline/principles.md` | — |
+| TypeScript | `references/baseline/typescript.md` | `references/user/typescript.md` |
+| Vue3 项目结构/hook/i18n/a11y | `references/baseline/vue3.md` | `references/user/vue3.md` |
+| SFC 七区与 computed | `references/baseline/sfc-structure.md` | `references/user/sfc-structure.md` |
+| 枚举 enumOf | `references/baseline/enum.md` | `references/user/enum.md` |
+| rattail 工具链 | `references/baseline/rattail.md` | `references/user/rattail.md` |
+| 错误处理 | `references/baseline/error-handling.md` | `references/user/error-handling.md` |
+| 整齐与可读 | `references/baseline/readability.md` | `references/user/readability.md` |
+| 查询/索引/--check | `references/baseline/tooling.md` | `references/user/tooling.md` |
+| 习惯索引 | — | `references/user/preferences.md` |
+
+规则：任务涉及哪些主题就加载哪些文件；user 文件**不存在则跳过**，不预建。同一文件后缀混用时叠加载规则，不拆成矛盾流程。
 
 ## 首次使用引导（每个项目一次）
 
-第一次在某个项目中使用本技能、且项目根目录没有 `.coder/` 目录时，**先确认项目根目录和状态，再不要开发**，用 AskUserQuestion 询问用户选择本次的建库范围（三选一）：
+第一次在项目中使用且根目录无 `.coder/` 时，用 `question` 三选一：
 
-1. **全量扫库**：运行 `--init`（栈检测生成 profile.json）+ `--refresh`（全量索引）。耗时较长但之后所有任务的查询都最快最准，适合打算长期在此项目开发时。
-2. **只建当前需求相关记录**：运行 `--refresh` 建立全量索引（索引只是路径/导出/接口摘要，建库成本低），但**不跑 --init 栈检测**；本次任务只围绕需求相关文件深入阅读。适合"只是做个小改动，不想为全项目建档案"时。之后需要范式档案可随时补跑 `--init`。
-3. **本次不创建，直接运行**：跳过建库，本次任务不使用索引查询（改为小范围直接阅读相关源码），之后不再询问；想启用时手动运行 `--init` / `--refresh` 即可。
-
-用户选择后：
-
-- 选 1 → 依次执行 `node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --init` 和 `--refresh`，然后依据 profile.json 结合 references 确定该项目开发范式，向用户简述确认后进入开发。
-- 选 2 → 只执行 `--refresh`，按 references 的通用规则 + 本次需求相关文件开发。
-- 选 3 → 本次跳过查询步骤，直接小范围阅读相关源码开发；本技能不再询问。
-
-无论选哪项，后续任务不再重复引导（以 `.coder/` 目录是否存在 + meta.json 为准）。
-
-## 文件后缀路由
-
-- `.vue`：加载 `references/sfc-structure.md`，遵守 Vue 3 `<script setup>`、模板、样式和组件接口规则。
-- `.ts`：复用本技能的查询、复用优先、类型优先、错误处理和验证规则；工具函数优先查询第三方依赖与项目已有导出。
-- 同一任务同时修改 `.vue` 与 `.ts`：使用同一套工作流，按文件后缀叠加规则，不拆成相互矛盾的流程。
-- 其他后缀（`.py`、`.go`、`.java` 等）：使用本技能的通用工作流（查询优先、铁律、最小实现、验证），不套用 Vue 规则；按该语言的社区惯例与项目现有风格执行。
-
-## 范式积累机制（技能随使用成长）
-
-本技能当前内置的深度规范仅覆盖 Vue 3 / TypeScript；其他语言暂按通用工作流处理，**但每次在非 Vue 项目开发结束时，应把该语言/框架沉淀出的可复用最佳实践回写到本技能**，让它随开发经验成长：
-
-1. **沉淀触发**：某语言/框架的项目开发中，形成了被验证有效的、超出该语言常识的实践（目录约定、错误处理模式、测试策略、构建检查清单等）→ 任务结束前沉淀。
-2. **沉淀位置**：每语言一个 reference 文件，放 `references/<language>.md`（如 `references/python.md`、`references/go.md`）；已有的 Vue 规则不要合并进去，保持互不污染。
-3. **沉淀格式**：沿用 `references/sfc-structure.md` 的风格——硬性规则（必须/禁止）、推荐约定、反例；只记录"下次遇到同样场景会重犯或重查"的内容，不记一次性调试过程。
-4. **SKILL.md 登记**：新增 reference 后在下方「共享资源」和「文件后缀路由」补一行，让后续任务能发现它。
-5. **沉淀上限**：新 reference 首版 ≤ 100 行，宁缺毋滥；与铁律（最小实现）冲突的"最佳实践"不收录。
-
-Vue 项目同理：Vue 生态的新实践（新 UI 库约定、新路由模式）沉淀进已有 references，而不是新建重复文件。
-
-## 查询优先（硬性，确认状态后的第一个动作）
-
-**规则：确认项目根目录与 `.coder/` 状态后，每次编程任务开始处理代码前，必须先运行查询脚本**——这是任务的第一步，不是可选项：
-
-- 写新组件/函数前 → 查询同名或相似名称（避免重复造轮子）
-- 修改已有组件/函数前 → 查询该名称（拿到精确行号、导入依赖、源码片段，再动手）
-- 排查 bug 前 → 查询相关符号（定位实现位置）
+1. **全量扫库**：`--init` + `--refresh`。适合长期开发。
+2. **只建当前需求相关**：只 `--refresh`，不跑 `--init`；本次只深读需求相关文件。可随时补 `--init`。
+3. **本次不创建**：跳过建库，小范围直接读源码；之后不再询问。
 
 ```bash
-node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> <组件名或函数名>
+node <SKILL_DIR>/scripts/query.js --root <项目根目录> --init
+node <SKILL_DIR>/scripts/query.js --root <项目根目录> --refresh
 ```
 
-常用选项：
-
-```bash
-node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --kind component BaseButton
-node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --kind function formatDate --json
-node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --refresh
-```
-
-**未运行查询就动手写代码 = 流程违规**；唯一豁免是索引不存在且用户选择了"本次不创建"（见下）。自查方式：如果回复中引用了某组件/函数的内部结构但没有对应的查询输出，说明跳了这一步。
-
-查询命中后，必须读取目标文件及其直接相关的类型定义/调用方（只读任务相关最小范围），确认现有接口、状态边界和约定后再编辑；索引摘要不能替代目标源码阅读。
-
-脚本首次运行或使用 `--refresh` 时建立项目索引；普通查询只读取索引，不读取 `.docs` 或全部源码。索引不包含源码正文和敏感配置，可提交也可加入项目 `.gitignore`。源码发生变化后，在下一次开发前用 `--refresh` 更新。
-
-**索引容量与 SQLite 模式**：索引条目 ≤300 时使用单个 JSON 文件；超过 300 条时自动切换为 SQLite（`.coder/index.sqlite`，逐行读取，避免大 JSON 加载慢）。也可用 `--db` 强制启用、`--no-db` 强制禁用。SQLite 模式需要 Node ≥ 22.5（内置 `node:sqlite`；本机可用 `/Users/reynold/.vite-plus/bin/node`）。两种模式输出格式完全一致，查询时无需关心后端。
-
-查询结果未命中时，才针对相关目录做小范围源码检查。禁止因为未命中就全量读取项目。
-
-**索引不存在时**（用户在引导中选了"本次不创建"或引导被跳过）：不要自动建库，本次任务直接小范围阅读相关源码。
+之后以 `.coder/` 是否存在为准，不再重复引导。
 
 ## 开发工作流
 
-1. **查询（硬性第一步）**：确认项目根目录和 `.coder` 状态后，任务涉及哪些组件/函数名，先逐个运行 `query.js` 查询；索引不存在且用户选跳过时，按引导豁免并小范围读源码。
-2. **读代码（硬性第二步）**：查询命中后读取目标文件及直接相关类型/调用方，确认接口、状态边界和约定，只读任务相关最小范围。
-3. **最小实现检查**：每个新增文件、抽象、配置项、状态和函数都必须对应当前需求中的具体行为；删除它后当前需求是否仍能完成？若能，删除。只有已有 2 个真实调用点才抽取共享 composable/通用层，不为未来复用预留。交付说明列出新增抽象及对应需求。
-4. 相似度检查：若已有实现与新需求在核心职责、输入输出、使用场景中至少两项一致，默认优先扩展已有实现；只有新增实现职责确实不同或会明显损害已有调用方时，才与用户确认是否新建。
-5. 实现最小改动。项目已有组件优先复用；新函数优先加入职责相同的已有文件。
-6. `.vue` 文件保持 SFC 七区顺序（import → 类型 → 常量 → hooks → 状态/computed → 函数 → watch/onMounted），细节与反例见 `references/sfc-structure.md`；`.ts` 文件使用明确类型、窄化输入和可测试的纯函数边界。
-7. **类型规范（硬性）**：业务代码禁止 `as` 断言与 `any`（唯一例外：无类型定义的老 npm 库，断言处加注释说明，并优先补 `.d.ts`）；类型在定义处声明，API 函数出入参都有类型。详细规则见 `references/sfc-structure.md` 第 6 节。
-8. **枚举规范（硬性）**：TS/Vue 代码中**禁止使用 `enum` 声明和 `as const` 对象模拟枚举**，统一使用 rattail 的 `enumOf`：`const Status = enumOf({ Idle: 0, Done: 1 })`；联合类型用 `type Status = EnumOf<typeof Status>`；label/description/选项列表用 `Status.label(v)`、`Status.options()` 等内建方法。需要新枚举时先加载 `$skill: rattail` 确认 API 细节。
-9. **工具函数优先 rattail（硬性）**：TS/Vue 需要任何工具函数（数组/对象/字符串/数学/DOM/文件/防抖等）时，先查 rattail 是否已提供并直接使用；rattail 没有等价能力时才允许项目内新写或引第三方库。请求器用 rattail/axle（`createAxle`），表单校验用 rattail/ruler-factory。不确定 rattail 有什么时，加载 `$skill: rattail` 查 references，不要凭记忆猜 API。
-10. **目录规范（Vue 项目）**：页面专属组件放视图目录 `src/pages|views/<页面>/components/`；被 2+ 页面复用才提升 `src/components/business/`；二次封装的 UI 基础组件放 `src/components/base/`；`src/components/ui/` 只允许 shadcn CLI 生成，手写组件一律不进。业务代码禁止裸用原生交互元素（button/input/select 等）——优先 UI 库/已封装组件，没有就封装后再用；纯布局元素（div/section 等）不受限。UI 库组件第一次使用时即按设计稿封装。
-11. **Hook 抽取时机**：禁止第一时间创建 `useXxx`。逻辑先写在组件函数区；只有"已被 2+ 组件实际复用"且"与响应式状态耦合"（纯逻辑去 utils）才抽取。
-12. **错误处理（硬性）**：业务代码禁止 try/catch——API 错误由请求器拦截器统一处理；唯一例外是自己写的工具函数转换错误后**必须重抛**（禁止吞错）；`finally` 复位 loading 允许。判断标准与四种优雅用法见 `references/error-handling.md`。
-13. **文件规模限制（硬性）**：按物理行计数（空行和注释也计入；文件末尾换行不额外产生一行）。`.vue` ≤ 500 行、所有 `<script>` 块合计 ≤ 300 行、其他受支持代码文件 ≤ 500 行。新增或本任务修改的超限文件不得交付；已有但本任务未涉及的超限文件可以记录为遗留，不得借此扩大范围。超过时按默认优先级拆分：① 独立 UI 区块拆子组件/子模块；② 若主要超限来自无状态纯逻辑，直接抽 utils；③ 最后才考虑 composable（仅状态耦合且有 2+ 实际消费者）。顺序是默认优先级，不是机械强制；拆分必须有当前需求依据，不得用“以后再拆”跳过。验收用 `query.js --check`，非零退出不得收工；确实受第三方生成代码约束时，说明具体原因并与用户确认。
-14. **可访问性基础**：每个表单控件有可访问名称（label 或 aria-label）；纯图标按钮必须有 aria-label；列表/内容为空时渲染可见空态文案。
-15. 运行项目已有的类型检查、测试和构建命令；至少验证受影响文件相关路径。构建通过 ≠ 交互正确，条件允许时起 dev server 实测关键交互。
-16. 源码变更后执行 `query.js --refresh` 更新索引（改动涉及新增/删除/移动文件时必须，改文件内容时建议）；完成前必须执行 `query.js --check` 并检查退出码。项目已有 `.docs` 时可遵守其既有任务日志约定，但本技能不强制创建或维护 `.docs` 全量清单。
-17. **vue-i18n 字典规范（硬性，项目启用 vue-i18n 时适用）**：字典只用 **JSON 文件**维护（`src/locales/` 或 `i18n/locales/`），禁止把字典写在 .ts/.js 对象或 SFC `<i18n>` 块里——JSON 才能被 i18n Ally 等编辑器插件正确解析、内联标注和悬浮预览。目录按语言分文件（`zh-CN.json`、`en.json`），命名空间大时用子目录 `{namespace}/{locale}.json` 结构。key 用 `nested` 嵌套风格（`{"user": {"login": "登录"}}`），按页面/领域分组，禁止中文/拼音当 key。源语言文件补全后再补其他语言；新增 key 必须同步所有语言文件。若插件未自动识别（非默认路径/结构），提交 `.vscode/settings.json` 配置 `i18n-ally.localesPaths` 与 `i18n-ally.pathMatcher`。
+1. **查询（硬性）**：按涉及的组件/函数名运行 `query.js`；无索引且用户选跳过时豁免，改为小范围读源码。详见 `tooling.md`。
+2. **读代码（硬性）**：读目标文件及直接相关类型/调用方，只读任务相关最小范围。
+3. **最小实现**：每个新增文件/抽象/配置/状态/函数必须对应当前需求具体行为；删掉后需求仍成立 → 删。2 个真实调用点才抽共享层。
+4. **相似度**：与已有实现在核心职责、输入输出、使用场景中 ≥2 项一致 → 默认扩展已有；职责确实不同才与用户确认新建。
+5. 按主题路由加载 baseline/user 规则后实现最小改动。
+6. `.vue` 遵守 SFC 七区；`.ts` 明确类型与可测试纯函数边界。
+7. 硬性细则按路由表读文件，不在本节重复（类型/枚举/rattail/目录/hook/错误处理/规模/i18n/逻辑随迁）。
+8. 运行项目类型检查、测试、构建；必要时 dev 实测。
+9. 变更后 `--refresh`；收工前 `--check` 非零不得收工。
+10. **收工前习惯汇总**：见「习惯积累」。
+
+## 习惯积累（随使用成长）
+
+覆盖关系与条目模板：`references/user/README.md`。索引：`references/user/preferences.md`。
+
+### 触发 A —— 纠偏即问
+
+用户明确纠正写法、否决推荐、或指定风格时，**立刻**用 `question` 问是否记为长期习惯；同意则写入 `references/user/<topic>.md` 并登记 `preferences.md`。
+
+### 触发 B —— 收工汇总
+
+每次开发任务收工前，回顾 0–3 条候选（被用户改过 ≥2 次的模式、用户口头确认的约定）。有则 `question` 多选；无则跳过，不打扰。
+
+### 触发 C —— 仓库归纳（Induce）
+
+用户要求归纳过往项目或优秀参考仓库时：
+
+1. 确认路径与性质（自己的历史项目 → 偏好；外部优秀仓库 → 参考）。
+2. 系统阅读：目录结构 → 代表性模块（入口/组件/工具/API/测试）→ 抽样对照；**禁止无目标全库乱读**。
+3. 提炼候选条目（模板同上，`来源` 写 `YYYY-MM-DD 仓库归纳:<path>`）。
+4. `question` 多选确认后写入 user 层；未勾选不落盘。
+5. 与铁律冲突的不收录；只记「下次会重犯或重查」的内容。
+
+归纳结果**只进 user/**，不直接改 baseline。
+
+### 沉淀纪律
+
+- 可执行、可判定；单 topic ≤ 150 行，超限先归档。
+- 不自动写入。
+- 新增 reference 后在本文件路由表补一行。
 
 ## 完成前检查
 
-任务结束前运行（无超限文件即通过）：
-
 ```bash
-node ~/.agents/skills/coder/scripts/query.js --root <项目根目录> --check
+node <SKILL_DIR>/scripts/query.js --root <项目根目录> --check
 ```
 
-输出超过规模限制的文件清单及行数；`.vue` 同时给出 script 区行数。有超限时先拆分再收工。
-
-`--check` 同时扫描枚举违规：`enum` 声明与 `as const` 对象枚举都会被报告并要求替换为 rattail 的 `enumOf`（扫描已排除注释和字符串，不会误报文档/文案中的 "enum" 字样）。
+输出超限文件与 enum/as-const 违规；有超限/违规先处理再收工。
 
 ## 子技能路由
 
-- 新建项目、脚手架和基础依赖选型：`$skill: vue3-project-init`
-- Vue 页面、组件和功能实现：`$skill: vue3-dev`
-- 依赖清理、工具链和未使用代码分析：`$skill: vue3-deps`
-- Vue 测试：`$skill: vue-testing-best-practices`
-- Pinia：`$skill: vue-pinia-best-practices`
-- Router：`$skill: vue-router-best-practices`
-- shadcn-vue 项目：`$skill: shadcn-vue`（critical rules 为强制约束：条件类用 `cn()`、v-model 优先、间距用 flex gap、图标按钮带 aria-label）
-- 默认工具链：`$skill: rattail`（**硬性**：TS/Vue 工具函数优先用 rattail，不重复引 lodash；枚举统一 `enumOf`；请求器 createAxle；校验 ruler-factory）
+- 新建项目、脚手架和选型：`$skill: vue3-project-init`
+- Vue 页面与功能：`$skill: vue3-dev`
+- 依赖清理、工具链：`$skill: vue3-deps`
+- Vue 测试 / Pinia / Router：对应 best-practices 技能
+- shadcn-vue：`$skill: shadcn-vue`
+- 默认工具链：`$skill: rattail`
 
-只在任务确实需要时加载子技能，避免重复加载规则。
-
-## 依赖清理（整合自旧 vue3-deps，Vue/TS 项目适用）
-
-- **未引用的文件/导出/依赖一律删除**，但先过自动导入例外：`auto-imports.d.ts`（unplugin-auto-import）、`components.d.ts`（unplugin-vue-components）、`typed-router.d.ts`（vue-router 5 文件路由）中声明的符号视为"可能在使用"，不得当垃圾删除；删除前先 grep 业务源码确认无实际调用。
-- 删除文件/函数 → 同步删除其 import；删依赖 → `npm/pnpm uninstall` 前先全局 grep。
-- 清理后必须重跑 build/dev，确认无 `Cannot find name`、`Failed to resolve import`、组件未注册报错；报错说明符号仍被使用，恢复。
-- 全部源码中无显式 import ≠ 未使用——ESM 副作用导入、模板中的组件自动注册都不走 import 语句。
-
-## 项目初始化要点（整合自旧 vue3-project-init）
-
-- **vue-router 5 文件路由**（推荐）：`vite.config.ts` 中 `VueRouter()` 必须放在 `vue()` 之前；`main.ts` 用 `import { routes } from 'vue-router/auto-routes'`；页面放 `src/pages/`（`index.vue`→`/`，`[id].vue`→`:id`，`[...all].vue`→404，`(group)/` 分组不改 URL）。首次 dev/build 生成 `typed-router.d.ts` 要提交进仓库，并加入 `tsconfig.app.json` 的 `include`。**禁止 unplugin-vue-router**（已归档，与 vue-router 5 原生不兼容）。
-- **pinia**：最新版 + `pinia-plugin-persistedstate` 持久化需问询用户；store 只存跨组件共享数据（用户信息/系统设置/权限），单页面一次性状态留在组件内。
-- **最小化安装**：只装确认选型的库，不擅自加 ESLint/测试/CI 等需求外配置。
+只在任务确实需要时加载，避免重复注入规则。
 
 ## 共享资源
 
-- `scripts/query.js`：栈检测（--init）、增量索引 v3（行号定位/导入清单/computed/源码片段，JSON/SQLite 自动切换）、按名称查询、规模检查（--check）
-- `.coder/profile.json`：项目栈档案（--init 生成，首次引导的依据）
-- `references/sfc-structure.md`：Vue SFC 结构与 computed 可读性规范
-- `references/error-handling.md`：错误处理规范
-- `references/<language>.md`：其他语言的沉淀规范（如 `python.md`、`go.md`），按「范式积累机制」生成，存在哪个读哪个
+- `scripts/query.js`：栈检测（--init）、索引 v3、查询、--check
+- `.coder/profile.json`：项目栈档案
+- `references/baseline/*`：官方默认规范（按主题）
+- `references/user/*`：个人习惯与索引
