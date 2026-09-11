@@ -1,6 +1,6 @@
 ---
 name: coder
-description: "一切开发任务的总入口——只要任务涉及编写、修改、审查、调试或重构代码（不限语言和文件类型），必须先加载本技能。开始处理代码前，先确认项目根目录与 .coder 状态——已有索引时运行 scripts/query.js 查询；无索引时按首次引导选择建库或跳过。四条一级铁律贯穿始终：禁止额外编程、不要预想未来、代码整齐、中低级可读。规范分层：references/baseline/ 为官方默认（按主题拆分 typescript/vue3/sfc/enum/rattail/error-handling/readability/tooling/deps），references/user/ 为随使用积累的个人习惯（user 覆盖 baseline 同主题冲突）。积累触发：用户纠偏即问、收工汇总候选、以及对过往项目/优秀仓库/GitHub 在线地址做系统归纳（Induce，浅克隆只读后删）。依赖审计：--deps 读 package.json，--deps --latest 对比 registry 并分类 major/minor/patch，经用户确认才升级。当前深度规范内置 Vue 3 与 TypeScript；其他语言走通用工作流并可沉淀到 user/<language>.md。TS/Vue 硬性：工具函数优先 rattail；禁止 enum 与 as const 枚举，统一 enumOf；vue-i18n 字典只用 JSON。首次在项目中使用时先询问建库范围（全量/仅相关/跳过）。索引超过 300 条自动 SQLite。Vue 复杂场景可分派 vue3-project-init、vue3-dev 或 vue3-deps。"
+description: "一切开发任务的总入口——只要任务涉及编写、修改、审查、调试或重构代码（不限语言和文件类型），必须先加载本技能。Vue3 页面/组件/依赖清理/项目初始化规范均已内置（原 vue3-dev、vue3-deps、vue3-project-init 已收拢，不再外部分派）。开始处理代码前，先确认项目根目录与 .coder 状态——已有索引时运行 scripts/query.js 查询；无索引时按首次引导选择建库或跳过。四条一级铁律贯穿始终：禁止额外编程、不要预想未来、代码整齐、中低级可读。规范分层：references/baseline/ 为官方默认（typescript/vue3/sfc/enum/rattail/error-handling/readability/tooling/deps），references/user/ 为随使用积累的个人习惯（user 覆盖 baseline）。积累触发：用户纠偏即问、收工汇总、仓库归纳（本地路径或 GitHub URL）。依赖审计：--deps / --deps --latest 分类 major/minor/patch，经用户确认才升级。TS/Vue 硬性：工具函数优先 rattail；禁止 enum 与 as const，统一 enumOf；vue-i18n 字典只用 JSON。首次在项目中使用时先询问建库范围。索引超过 300 条自动 SQLite。"
 ---
 
 # Coder
@@ -119,20 +119,16 @@ node <SKILL_DIR>/scripts/query.js --root <项目根目录> --check
 
 输出超限文件与 enum/as-const 违规；有超限/违规先处理再收工。
 
-## 子技能路由
+## 相关技能（仅这两个仍独立存在）
 
-- 新建项目、脚手架和选型：`$skill: vue3-project-init`
-- Vue 页面与功能：`$skill: vue3-dev`
-- 依赖清理、工具链：`$skill: vue3-deps`
-- Vue 测试 / Pinia / Router：对应 best-practices 技能
-- shadcn-vue：`$skill: shadcn-vue`
-- 默认工具链：`$skill: rattail`
+- shadcn-vue 项目：`$skill: shadcn-vue`（critical rules 强制：条件类用 `cn()`、v-model 优先、间距 flex gap、图标按钮 aria-label）
+- TS/Vue 工具链细节：`$skill: rattail`（硬性 rattail-first，见 `rattail.md`）
 
-只在任务确实需要时加载，避免重复注入规则。
+Vue3 页面开发、依赖清理、项目初始化均已内置在本技能 baseline，**不再分派** `vue3-dev` / `vue3-deps` / `vue3-project-init`（已删除）。Vue 测试 / Pinia / Router 细节可按需加载对应 best-practices 技能。
 
 ## 共享资源
 
 - `scripts/query.js`：栈检测（--init）、索引 v3、查询、--check、依赖列表（--deps/--latest）
 - `.coder/profile.json`：项目栈档案
-- `references/baseline/*`：官方默认规范（按主题）
+- `references/baseline/*`：官方默认规范（按主题，含原 vue3-dev/deps/init 收拢内容）
 - `references/user/*`：个人习惯与索引

@@ -524,19 +524,18 @@ SQLite 模式需要 Node ≥ 22.5。不够时用 `--no-db` 强制 JSON，或升�
 **Q: 如何开始积累自己的习惯？**  
 正常使用即可。下次纠正 agent 写法时选「记为长期习惯」；或让 agent 归纳你的历史仓库。
 
-**Q: 和 vue3-dev / rattail 的关系？**  
-coder 是总入口；复杂 Vue 场景可再加载 `vue3-dev` 等子技能；TS 工具函数强制优先 rattail。
+**Q: 和 rattail / shadcn-vue 的关系？**  
+coder 是总入口；Vue3 开发/依赖清理/项目初始化规范已内置。TS 工具函数强制优先 rattail；shadcn-vue 项目再加载 `$skill: shadcn-vue`。
 
 ---
 
-## 子技能路由
+## 相关技能
 
-- 新建项目、脚手架和选型：`vue3-project-init`
-- Vue 页面与功能：`vue3-dev`
-- 依赖清理、工具链：`vue3-deps`
-- Vue 测试 / Pinia / Router：对应 best-practices 技能
+Vue3 页面开发、依赖清理、项目初始化**均已内置**（原 `vue3-dev` / `vue3-deps` / `vue3-project-init` 已删除并收拢，不再外部分派）。
+
 - shadcn-vue：`shadcn-vue`
-- 默认工具链：`rattail`
+- 工具链：`rattail`
+- Vue 测试 / Pinia / Router：对应 best-practices 技能
 
 只在任务确实需要时加载，避免重复注入规则。
 
